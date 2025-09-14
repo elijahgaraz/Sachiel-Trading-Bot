@@ -96,3 +96,6 @@ scikit-learn>=1.0.0
 ta>=0.10.0
 pytz>=2021.1
 python-dotenv>=0.19.0
+ctrader-open-api
+Twisted
+service_identity
