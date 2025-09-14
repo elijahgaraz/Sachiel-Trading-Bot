@@ -68,7 +68,7 @@ class MainApp(tk.Tk):
                 balance = summary.get('balance')
                 if balance is not None:
                     self.settings_tab.account_frame.pack(fill=tk.X, padx=5, pady=5)
-                    self.settings_tab.account_balance.config(text=f"Balance: ${balance:,.2f}")
+                    self.settings_tab.account_balance.config(text=f"Balance: £{balance:,.2f}")
                 else:
                     self.settings_tab.account_frame.pack_forget()
         
@@ -95,6 +95,8 @@ class MainApp(tk.Tk):
 
     def _run_event_loop(self):
         """Run the event loop in the background thread"""
+        from twisted.internet import asyncioreactor
+        asyncioreactor.install(event_loop=self.loop)
         asyncio.set_event_loop(self.loop)
         self.loop.run_forever()
 
