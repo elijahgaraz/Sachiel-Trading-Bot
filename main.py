@@ -79,9 +79,8 @@ class MainApp(tk.Tk):
 
         # Create tabs
         self.trading_tab = TradingTab(self.notebook)
-        # If TradingTab expects a client, attach it
-        if hasattr(self.trading_tab, "ctrader_client"):
-            self.trading_tab.ctrader_client = self.ctrader_client
+        # Set the cTrader client for the trading tab
+        self.trading_tab.set_ctrader_client(self.ctrader_client)
 
         self.settings_tab = SettingsTab(self.notebook, self.ctrader_client)
         self.ai_tab = SachielAITab(self.notebook)
@@ -127,6 +126,7 @@ class MainApp(tk.Tk):
                 self.settings_tab.status_label.config(text=f"Status: {status}", foreground=color)
                 if status == "Connected":
                     self.settings_tab.disconnect_button.config(state=tk.NORMAL)
+                    self.trading_tab.load_symbols_if_connected()
                 else:
                     self.settings_tab.disconnect_button.config(state=tk.DISABLED)
 

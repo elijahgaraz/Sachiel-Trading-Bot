@@ -34,15 +34,12 @@ class TradingTab(ttk.Frame):
         self.process_results()
 
     def verify_connection(self):
-            """Verify connection to cTrader is still active"""
-            try:
-                if self.ctrader_client and self.ctrader_client.client:
-                    # This will be implemented later
-                    return True
-                return False
-            except Exception as e:
-                print(f"Connection verification failed: {e}")
-                return False
+        """Verify connection to cTrader is still active"""
+        # This method is called in the trading loop, so it should not raise NotImplementedError
+        # for now, it will just use the check_connection method from the client
+        if self.ctrader_client:
+            return self.ctrader_client.check_connection()
+        return False
 
     def setup_ui(self):
         """Setup the complete trading interface"""
@@ -319,18 +316,22 @@ class TradingTab(ttk.Frame):
                 self.symbol_combo.config(values=[])
             
                 if self.ctrader_client is None:
-                    self.initialize_clients()
+                messagebox.showerror("Error", "cTrader client not initialized. Please connect from the Settings tab.")
+                return
 
-            # Get both stocks and crypto symbols
-                # This will be implemented later
-                all_symbols = ["EURUSD", "USDJPY", "BTCUSD"]
-                
+            # Get tradable symbols from the client
+            all_symbols = self.ctrader_client.get_tradable_symbols()
+
+            if all_symbols:
                 self.symbol_combo.config(values=all_symbols)
                 self.loading_label.config(text=f"{len(all_symbols)} symbols loaded")
-                self.refresh_button.config(state=tk.NORMAL)
-            
                 if all_symbols:
                     self.symbol_combo.set(all_symbols[0])
+            else:
+                self.loading_label.config(text="No symbols found.")
+                messagebox.showwarning("Symbols", "Could not retrieve tradable symbols. Make sure you are connected and the account has symbols enabled.")
+
+            self.refresh_button.config(state=tk.NORMAL)
                 
             except Exception as e:
                 self.loading_label.config(text="Error loading symbols")
@@ -341,8 +342,14 @@ class TradingTab(ttk.Frame):
         thread.daemon = True
         thread.start() 
     
+    def set_ctrader_client(self, client):
+        """Sets the cTrader client and loads initial data if connected."""
+        self.ctrader_client = client
+        if self.ctrader_client and self.ctrader_client.check_connection():
+            self.load_symbols()
+
     def load_symbols_if_connected(self):
-        if Config.CTRADING_CLIENT_ID and Config.CTRADING_CLIENT_SECRET:
+        if self.ctrader_client and self.ctrader_client.check_connection():
             self.load_symbols()
 
     def start_market_status_updates(self):
@@ -362,10 +369,11 @@ class TradingTab(ttk.Frame):
 
                     # Check if we need to initialize clients
                     if self.ctrader_client is None:
-                        print("No cTrader client, attempting to initialize...")
-                        if not self.initialize_clients():
-                            time.sleep(60)
-                            continue
+                        # The client is initialized in the main app, so we just wait for it.
+                        # This background thread will check again in the next loop.
+                        print("Waiting for cTrader client to be initialized...")
+                        time.sleep(5) # Wait a bit before retrying
+                        continue
 
                     # Get current symbol and check if it's crypto
                     current_symbol = self.symbol_var.get() if hasattr(self, 'symbol_var') else ""
@@ -513,10 +521,9 @@ class TradingTab(ttk.Frame):
                 return
                 
             # Initialize clients if not already done
-            if self.ctrader_client is None:
-                print("\nInitializing new cTrader client...")
-                if not self.initialize_clients():
-                    raise Exception("Failed to initialize trading clients")
+            if self.ctrader_client is None or not self.ctrader_client.check_connection():
+                messagebox.showerror("Error", "Not connected to cTrader. Please connect from the Settings tab first.")
+                return
             
             # Get symbol and check if it's crypto
             symbol = self.symbol_var.get()
@@ -618,12 +625,11 @@ class TradingTab(ttk.Frame):
             # Add periodic connection check
             if not self.simulation_mode:
                 try:
-                    if not self.verify_connection():
-                        print("Lost connection to cTrader, attempting to reconnect...")
-                        if not self.initialize_clients():
-                            print("Failed to reconnect, stopping trading")
-                            self.stop_trading()
-                            break
+                    if not self.ctrader_client.check_connection():
+                        print("Lost connection to cTrader, stopping trading loop.")
+                        self.result_queue.put(("log", ("STOP", symbol, "-", "-", "-", "-", "Connection Lost", "-")))
+                        self.stop_trading()
+                        break
                 except Exception as e:
                     print(f"Error in connection check: {e}")
 
@@ -912,7 +918,8 @@ class TradingTab(ttk.Frame):
         """Check and execute exit conditions for live trades"""
         try:
             # This will be implemented later
-            pass
+            # For now, just print a message
+            print(f"Live exit check for {symbol} is not implemented.")
             
         except Exception as e:
             print(f"Error in exit check: {e}")
