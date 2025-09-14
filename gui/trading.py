@@ -534,18 +534,14 @@ class TradingTab(ttk.Frame):
             price_scale = 10**symbol_details.digits
             last_bar = bars[-1]
             current_price = (last_bar.low + last_bar.deltaClose) / price_scale
-            
+
             print(f"Current price for {symbol}: {current_price}")
 
-            # The rest of the trading logic that depends on the bars
-            # For now, we just print the price. The position and entry/exit logic would go here.
-            # Example:
-            # position = self.ctrader_client.get_position(symbol) ...
-            # if position is None:
-            #    if self.check_entry_conditions(symbol, current_price, bars):
-            #        ...
-            # else:
-            #    self.check_live_exit(symbol, position, current_price)
+            # Now, chain the next async call to get positions
+            positions_deferred = self.ctrader_client.get_positions()
+            if positions_deferred:
+                positions_deferred.addCallback(self._on_positions_received, symbol=symbol, current_price=current_price, bars=bars, is_crypto=is_crypto)
+                positions_deferred.addErrback(self._on_positions_error)
 
         except Exception as e:
             print(f"Error processing bars: {e}")
@@ -554,8 +550,36 @@ class TradingTab(ttk.Frame):
     def _on_bars_error(self, failure):
         """Callback for handling errors from the get_bars Deferred."""
         print(f"Error fetching bars: {failure.getErrorMessage()}")
-        # You might want to update the UI to show the error
-                
+
+    def _on_positions_received(self, positions_response, symbol, current_price, bars, is_crypto):
+        """Callback executed when the list of positions is received."""
+        try:
+            # Find if a position for the current symbol exists
+            position = None
+            for p in positions_response.position:
+                if self.ctrader_client.symbols_map.get(p.tradeData.symbolId) == symbol:
+                    position = p
+                    break
+
+            if position is None:
+                # No position, check entry conditions
+                if self.check_entry_conditions(symbol, current_price, bars):
+                    if is_crypto:
+                        self.enter_live_crypto_trade(symbol, current_price)
+                    else:
+                        self.enter_live_trade(symbol, current_price)
+            else:
+                # Position exists, check exit conditions
+                self.check_live_exit(symbol, position, current_price)
+
+        except Exception as e:
+            print(f"Error processing positions: {e}")
+            traceback.print_exc()
+
+    def _on_positions_error(self, failure):
+        """Callback for handling errors from the get_positions Deferred."""
+        print(f"Error fetching positions: {failure.getErrorMessage()}")
+
     def start_trading(self):
         """Start trading with improved stock handling"""
         try:
@@ -697,48 +721,6 @@ class TradingTab(ttk.Frame):
                     
         except Exception as e:
             print(f"Error monitoring trades: {e}")
-            traceback.print_exc()
-    def execute_live_trade(self):
-        """Execute live trading operation with combo box"""
-        try:
-            # Get symbol from combo box
-            symbol = self.symbol_var.get()
-            if not symbol:
-                return
-                
-            # Format symbol for crypto
-            is_crypto = 'BTC' in symbol or 'ETH' in symbol
-            
-            print(f"Attempting to trade {symbol}, is_crypto: {is_crypto}")
-            
-            # Get current market data
-            bars = self.ctrader_client.get_bars(symbol, is_crypto)
-            if not bars:
-                print(f"No price data available for {symbol}")
-                return
-                
-            current_price = bars[-1].close
-            print(f"Current price for {symbol}: {current_price}")
-            
-            # Check existing position
-            try:
-                position = self.ctrader_client.get_position(symbol)
-            except Exception:
-                position = None
-            
-            if position is None:
-                # Check entry conditions
-                if self.check_entry_conditions(symbol, current_price, bars):
-                    if is_crypto:
-                        self.enter_live_crypto_trade(symbol, current_price)
-                    else:
-                        self.enter_live_trade(symbol, current_price)
-            else:
-                # Check exit conditions
-                self.check_live_exit(symbol, position, current_price)
-            
-        except Exception as e:
-            print(f"Error in live trade execution: {e}")
             traceback.print_exc()
     
     def execute_simulation_trade(self):
