@@ -15,6 +15,8 @@ import traceback
 import pandas as pd
 from trading.price_simulator import PriceSimulator
 from collections import defaultdict
+import queue
+import asyncio
 
 class TradingTab(ttk.Frame):
     def __init__(self, parent):
@@ -26,8 +28,10 @@ class TradingTab(ttk.Frame):
         self.active_positions = defaultdict(dict)
         self.highest_prices = {}
         self.partial_exits = set()
+        self.result_queue = queue.Queue()
         self.setup_ui()
         self.start_market_status_updates()
+        self.process_results()
 
     def verify_connection(self):
             """Verify connection to cTrader is still active"""
@@ -240,6 +244,31 @@ class TradingTab(ttk.Frame):
         x_scrollbar.pack(fill=tk.X)
         
         # self.start_auto_updates() # This was causing errors
+
+    def process_results(self):
+        """Process results from the result queue in a thread-safe way."""
+        try:
+            while not self.result_queue.empty():
+                result_type, data = self.result_queue.get_nowait()
+                loop = self.master.master.loop
+
+                if result_type == "bars_received":
+                    asyncio.run_coroutine_threadsafe(self._on_bars_received_gui(*data), loop)
+                elif result_type == "positions_received":
+                    self._on_positions_received_gui(*data)
+                elif result_type == "bars_error":
+                    self._on_bars_error_gui(*data)
+                elif result_type == "positions_error":
+                    self._on_positions_error_gui(*data)
+                elif result_type == "log":
+                    self.add_to_log(*data)
+                # ... handle other result types if any
+
+        except queue.Empty:
+            pass  # No more items in the queue
+        finally:
+            # Schedule the next check
+            self.after(100, self.process_results)
      
     def toggle_simulation_mode(self):
         """Updated simulation mode toggle with crypto support"""
@@ -400,7 +429,7 @@ class TradingTab(ttk.Frame):
                     print(f"Error checking market status: {e}")
                     self.start_button.config(state=tk.DISABLED)
     
-    def execute_live_trade(self):
+    async def execute_live_trade(self):
         """Initiates the process of fetching bars and executing a trade."""
         try:
             symbol = self.symbol_var.get()
@@ -410,10 +439,8 @@ class TradingTab(ttk.Frame):
             is_crypto = 'BTC' in symbol or 'ETH' in symbol
             print(f"Attempting to trade {symbol}, is_crypto: {is_crypto}")
             
-            deferred = self.ctrader_client.get_bars(symbol, is_crypto)
-            if deferred:
-                deferred.addCallback(self._on_bars_received, symbol=symbol, is_crypto=is_crypto)
-                deferred.addErrback(self._on_bars_error)
+            bars_response = await self.ctrader_client.get_bars(symbol, is_crypto)
+            self._on_bars_received(bars_response, symbol, is_crypto)
 
         except Exception as e:
             print(f"Error initiating live trade execution: {e}")
@@ -421,6 +448,10 @@ class TradingTab(ttk.Frame):
 
     def _on_bars_received(self, bars_response, symbol, is_crypto):
         """Callback executed when historical bar data is successfully received."""
+        self.result_queue.put(("bars_received", (bars_response, symbol, is_crypto)))
+
+    async def _on_bars_received_gui(self, bars_response, symbol, is_crypto):
+        """GUI update part of _on_bars_received."""
         try:
             bars = bars_response.trendbar
             if not bars:
@@ -442,21 +473,20 @@ class TradingTab(ttk.Frame):
 
             print(f"Current price for {symbol}: {current_price}")
 
-            positions_deferred = self.ctrader_client.get_positions()
-            if positions_deferred:
-                positions_deferred.addCallback(self._on_positions_received, symbol=symbol, current_price=current_price, bars=bars)
-                positions_deferred.addErrback(self._on_positions_error)
+            positions_response = await self.ctrader_client.get_positions()
+            self._on_positions_received(positions_response, symbol, current_price, bars)
 
         except Exception as e:
             print(f"Error processing bars: {e}")
             traceback.print_exc()
 
-    def _on_bars_error(self, failure):
-        """Callback for handling errors from the get_bars Deferred."""
-        print(f"Error fetching bars: {failure.getErrorMessage()}")
 
     def _on_positions_received(self, positions_response, symbol, current_price, bars):
         """Callback executed when the list of positions is received."""
+        self.result_queue.put(("positions_received", (positions_response, symbol, current_price, bars)))
+
+    def _on_positions_received_gui(self, positions_response, symbol, current_price, bars):
+        """GUI update part of _on_positions_received."""
         try:
             position = None
             for p in positions_response.position:
@@ -475,9 +505,6 @@ class TradingTab(ttk.Frame):
             print(f"Error processing positions: {e}")
             traceback.print_exc()
 
-    def _on_positions_error(self, failure):
-        """Callback for handling errors from the get_positions Deferred."""
-        print(f"Error fetching positions: {failure.getErrorMessage()}")
 
     def start_trading(self):
         """Start trading with improved stock handling"""
@@ -578,7 +605,8 @@ class TradingTab(ttk.Frame):
                 if self.simulation_mode:
                     self.execute_simulation_trade()
                 else:
-                    self.execute_live_trade()
+                    loop = self.master.master.loop
+                    asyncio.run_coroutine_threadsafe(self.execute_live_trade(), loop)
                             
                 time.sleep(1)  # Check every second
                     
@@ -663,7 +691,7 @@ class TradingTab(ttk.Frame):
                     datetime.now(pytz.UTC).strftime('%Y-%m-%d %H:%M:%S'),
                     symbol,
                     "BUY",
-                    f"${price:.2f}",
+                    f"£{price:.2f}",
                     position_size,
                     "-"
                 )
@@ -694,7 +722,7 @@ class TradingTab(ttk.Frame):
                     datetime.now(pytz.UTC).strftime('%Y-%m-%d %H:%M:%S'),
                     symbol,
                     "BUY CRYPTO",
-                    f"${price:.2f}",
+                    f"£{price:.2f}",
                     position_size,
                     "-",
                     "Entry",
@@ -727,7 +755,7 @@ class TradingTab(ttk.Frame):
                 datetime.now(pytz.UTC).strftime('%Y-%m-%d %H:%M:%S'),
                 self.symbol_var.get(),
                 "BUY (SIM)",
-                f"${price:.2f}",
+                f"£{price:.2f}",
                 position_size,
                 "-"
             )
@@ -774,7 +802,7 @@ class TradingTab(ttk.Frame):
             uptrend = latest['sma_20'] > latest['sma_50'] if len(df) >= 50 else True
 
             print("\nEntry Conditions Check:")
-            print(f"Price (${current_price:.2f}) above SMA20 (${latest['sma_20']:.2f}): {price_above_sma}")
+            print(f"Price (£{current_price:.2f}) above SMA20 (£{latest['sma_20']:.2f}): {price_above_sma}")
             print(f"Volume ({latest['volume']:.0f}) above MA ({latest['volume_ma']:.0f}): {volume_increase}")
             print(f"RSI ({latest['rsi']:.2f}) between 30-70: {rsi_favorable}")
             print(f"Uptrend (SMA20 > SMA50): {uptrend}")
@@ -914,15 +942,15 @@ class TradingTab(ttk.Frame):
                     datetime.now(pytz.UTC).strftime('%Y-%m-%d %H:%M:%S'),
                     self.current_position['symbol'],
                     exit_type,
-                    f"${current_price:.2f}",
+                    f"£{current_price:.2f}",
                     position_size,
-                    f"${pl_amount:.2f} ({pl_percentage:.2f}%)"
+                    f"£{pl_amount:.2f} ({pl_percentage:.2f}%)"
                 )
                 
                 print(f"Exited simulation trade:")
                 print(f"Exit Type: {exit_type}")
-                print(f"Exit Price: ${current_price:.2f}")
-                print(f"P&L: ${pl_amount:.2f} ({pl_percentage:.2f}%)")
+                print(f"Exit Price: £{current_price:.2f}")
+                print(f"P/L: £{pl_amount:.2f} ({pl_percentage:.2f}%)")
                 
                 self.current_position = None
                 

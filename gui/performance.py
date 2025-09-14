@@ -198,15 +198,15 @@ class PerformanceTab(ttk.Frame):
             changes = self.calculate_changes(total_pl, win_rate, avg_win, avg_loss)
 
             return {
-                "Total P/L": (f"${total_pl:,.2f}", changes['pl']),
+                "Total P/L": (f"£{total_pl:,.2f}", changes['pl']),
                 "Win Rate": (f"{win_rate*100:.2f}%", changes['win_rate']),
                 "Total Trades": (str(len(pls)), ""),
                 "Winning Trades": (str(len(winning_trades)), ""),
                 "Losing Trades": (str(len(losing_trades)), ""),
-                "Average Win": (f"${avg_win:,.2f}", changes['avg_win']),
-                "Average Loss": (f"${avg_loss:,.2f}", changes['avg_loss']),
-                "Largest Win": (f"${largest_win:,.2f}", ""),
-                "Largest Loss": (f"${largest_loss:,.2f}", ""),
+                "Average Win": (f"£{avg_win:,.2f}", changes['avg_win']),
+                "Average Loss": (f"£{avg_loss:,.2f}", changes['avg_loss']),
+                "Largest Win": (f"£{largest_win:,.2f}", ""),
+                "Largest Loss": (f"£{largest_loss:,.2f}", ""),
                 "Profit Factor": (f"{profit_factor:.2f}", ""),
                 "Sharpe Ratio": (f"{sharpe:.2f}", ""),
                 "Max Drawdown": (f"{max_drawdown:.2f}%", "")
@@ -220,15 +220,15 @@ class PerformanceTab(ttk.Frame):
     def get_default_metrics(self):
         """Return default metrics when no trades exist"""
         return {
-            "Total P/L": ("$0.00", ""),
+            "Total P/L": ("£0.00", ""),
             "Win Rate": ("0.00%", ""),
             "Total Trades": ("0", ""),
             "Winning Trades": ("0", ""),
             "Losing Trades": ("0", ""),
-            "Average Win": ("$0.00", ""),
-            "Average Loss": ("$0.00", ""),
-            "Largest Win": ("$0.00", ""),
-            "Largest Loss": ("$0.00", ""),
+            "Average Win": ("£0.00", ""),
+            "Average Loss": ("£0.00", ""),
+            "Largest Win": ("£0.00", ""),
+            "Largest Loss": ("£0.00", ""),
             "Profit Factor": ("0.00", ""),
             "Sharpe Ratio": ("0.00", ""),
             "Max Drawdown": ("0.00%", "")
@@ -314,8 +314,8 @@ class PerformanceTab(ttk.Frame):
             for metric, (value, change) in metrics.items():
                 # Determine color based on value type
                 if 'P/L' in metric or 'Win' in metric or 'Loss' in metric:
-                    if value.startswith('$'):
-                        amount = float(value.replace('$', '').replace(',', ''))
+                    if value.startswith('£'):
+                        amount = float(value.replace('£', '').replace(',', ''))
                         tags = ('positive',) if amount > 0 else ('negative',) if amount < 0 else ()
                     elif value.endswith('%'):
                         amount = float(value.rstrip('%'))
@@ -353,8 +353,8 @@ class PerformanceTab(ttk.Frame):
                 return float(price_str)
             if price_str == '-':
                 return 0.0
-            # Remove $ and , from string and convert to float
-            return float(price_str.replace('$', '').replace(',', ''))
+            # Remove £ and , from string and convert to float
+            return float(price_str.replace('£', '').replace(',', ''))
         except Exception as e:
             print(f"Error extracting price from {price_str}: {e}")
             return 0.0
@@ -368,12 +368,12 @@ class PerformanceTab(ttk.Frame):
                 return 0.0
             # Handle different P/L string formats
             if '(' in pl_str:
-                # Extract the dollar amount before the parentheses
+                # Extract the pound amount before the parentheses
                 pl_value = pl_str.split('(')[0].strip()
             else:
                 pl_value = pl_str
-            # Remove $ and , from string and convert to float
-            return float(pl_value.replace('$', '').replace(',', ''))
+            # Remove £ and , from string and convert to float
+            return float(pl_value.replace('£', '').replace(',', ''))
         except Exception as e:
             print(f"Error extracting P/L from {pl_str}: {e}")
             return 0.0
@@ -402,13 +402,13 @@ class PerformanceTab(ttk.Frame):
             print(f"Error getting trading tab: {e}")
             return None
 
-    def format_metric(self, name, value, include_dollar=True, include_percent=False):
+    def format_metric(self, name, value, include_pound=True, include_percent=False):
         """Format metric value with appropriate symbols"""
         try:
             if value == 0:
-                return "$0.00" if include_dollar else "0.00%"
-            if include_dollar:
-                return f"${value:,.2f}"
+                return "£0.00" if include_pound else "0.00%"
+            if include_pound:
+                return f"£{value:,.2f}"
             if include_percent:
                 return f"{value:.2f}%"
             return f"{value:.2f}"
