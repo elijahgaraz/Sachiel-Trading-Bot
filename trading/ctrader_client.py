@@ -501,9 +501,27 @@ class CTraderClient:
 
         try:
             self.client.startService()
-            if _reactor_installed and not reactor.running:
-                self._reactor_thread = threading.Thread(target=lambda: reactor.run(installSignalHandlers=0), daemon=True)
-                self._reactor_thread.start()
+            if _reactor_installed:
+                # Some environments (e.g. when Twisted is installed with the
+                # asyncio reactor) may already have an event loop running.
+                # ``reactor.running`` can still be ``False`` in that case,
+                # so check the underlying asyncio loop if present before
+                # attempting to start the reactor to avoid ``RuntimeError``
+                # "This event loop is already running".
+                asyncio_loop = getattr(reactor, "_asyncioEventloop", None)
+                loop_running = False
+                if asyncio_loop is not None:
+                    try:
+                        loop_running = asyncio_loop.is_running()
+                    except Exception:
+                        loop_running = False
+
+                if not reactor.running and not loop_running:
+                    self._reactor_thread = threading.Thread(
+                        target=lambda: reactor.run(installSignalHandlers=0),
+                        daemon=True,
+                    )
+                    self._reactor_thread.start()
             return True
         except Exception as e:
             self._last_error = f"OpenAPI client error: {e}"
