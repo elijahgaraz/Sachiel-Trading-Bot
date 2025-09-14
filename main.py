@@ -8,6 +8,7 @@ import threading
 from datetime import datetime
 import traceback
 
+from twisted.internet import asyncioreactor
 from gui.trading import TradingTab
 from gui.settings import SettingsTab
 from gui.sachiel_ai import SachielAITab
@@ -21,6 +22,7 @@ class MainApp(tk.Tk):
         
         # Set up async event loop
         self.loop = asyncio.new_event_loop()
+        asyncioreactor.install(eventloop=self.loop)
         self.thread = threading.Thread(target=self._run_event_loop, daemon=True)
         self.thread.start()
 
@@ -95,8 +97,6 @@ class MainApp(tk.Tk):
 
     def _run_event_loop(self):
         """Run the event loop in the background thread"""
-        from twisted.internet import asyncioreactor
-        asyncioreactor.install(eventloop=self.loop)
         asyncio.set_event_loop(self.loop)
         self.loop.run_forever()
 
