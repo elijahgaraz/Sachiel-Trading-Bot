@@ -195,8 +195,8 @@ class CTraderClient:
             client.stopService()
             return
         print(f"Sending ProtoOAApplicationAuthReq")
-        d = client.send(req)
-        d.addCallbacks(self._handle_app_auth_response, self._handle_send_error)
+        # All responses will be handled by _on_message_received
+        client.send(req)
 
     def _on_client_disconnected(self, client: Client, reason: Any) -> None:
         print(f"OpenAPI Client Disconnected: {reason}")
@@ -236,7 +236,11 @@ class CTraderClient:
         elif isinstance(actual_message, (ProtoOAErrorRes, ProtoErrorRes)):
             self._last_error = f"{actual_message.errorCode}: {actual_message.description}"
             print(self._last_error)
-            if "NOT_AUTHENTICATED" in actual_message.errorCode:
+            if "ALREADY_LOGGED_IN" in actual_message.errorCode:
+                # This can happen on reconnect. Treat as success and proceed.
+                print("Application is already logged in. Proceeding with account authentication.")
+                self._handle_app_auth_response(None)
+            elif "NOT_AUTHENTICATED" in actual_message.errorCode:
                 self.disconnect()
         else:
             if isinstance(actual_message, ProtoMessage):
@@ -245,8 +249,10 @@ class CTraderClient:
                 print(f"Unhandled message type in _on_message_received: {type(actual_message)}")
 
 
-    def _handle_app_auth_response(self, response: ProtoOAApplicationAuthRes) -> None:
-        print("Application authenticated.")
+    def _handle_app_auth_response(self, response: ProtoOAApplicationAuthRes | None) -> None:
+        if response is not None:
+            print("Application authenticated successfully via response.")
+
         if self._account_auth_initiated:
             return
 
@@ -323,9 +329,16 @@ class CTraderClient:
 
     def _update_trader_details(self, log_message: str, trader_proto: ProtoOATrader):
         if trader_proto:
-            self.account_id = str(trader_proto.ctidTraderAccountId)
-            self.balance = trader_proto.balance / 100.0
-            self.equity = trader_proto.equity / 100.0
+            self.account_id = str(getattr(trader_proto, 'ctidTraderAccountId', self.account_id))
+
+            balance_val = getattr(trader_proto, 'balance', None)
+            if balance_val is not None:
+                self.balance = balance_val / 100.0
+
+            equity_val = getattr(trader_proto, 'equity', None)
+            if equity_val is not None:
+                self.equity = equity_val / 100.0
+
             if self.on_account_update:
                 self.on_account_update(self.get_account_summary())
 
