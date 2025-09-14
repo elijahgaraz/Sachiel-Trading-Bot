@@ -123,6 +123,7 @@ class CTraderClient:
 
         self.client: Optional[Client] = None
         self._message_id_counter: int = 1
+        self._response_deferreds: Dict[str, Any] = {}
         self._reactor_thread: Optional[threading.Thread] = None
         self._auth_code: Optional[str] = None
         self._account_auth_initiated: bool = False
@@ -213,6 +214,15 @@ class CTraderClient:
         except Exception as e:
             print(f"Error using Protobuf.extract: {e}. Falling back to manual deserialization if possible.")
             actual_message = message
+
+        # Check if the message corresponds to a pending deferred
+        if hasattr(actual_message, "clientMsgId") and actual_message.clientMsgId in self._response_deferreds:
+            d = self._response_deferreds.pop(actual_message.clientMsgId)
+            if isinstance(actual_message, (ProtoOAErrorRes, ProtoErrorRes)):
+                d.errback(Exception(f"{actual_message.errorCode}: {actual_message.description}"))
+            else:
+                d.callback(actual_message)
+            return
 
         if isinstance(actual_message, ProtoOAApplicationAuthRes):
             self._handle_app_auth_response(actual_message)
@@ -365,9 +375,6 @@ class CTraderClient:
 
     def _handle_execution_event(self, event: ProtoOAExecutionEvent):
         print(f"Execution Event: {event}")
-
-    def _handle_get_trendbars_response(self, response: ProtoOAGetTrendbarsRes):
-        print(f"Received {len(response.trendbar)} trendbars for symbol {response.symbolId}")
 
     def _handle_send_error(self, failure: Any) -> None:
         print(f"Send error: {failure.getErrorMessage()}")
@@ -601,13 +608,25 @@ class CTraderClient:
                 return False
         return True
 
-    def get_positions(self):
+    def _send_request(self, request):
+        """Helper to send a request and return a Deferred."""
         if not self.is_connected:
             print("Not connected to cTrader")
             return None
+
+        client_msg_id = self._next_message_id()
+        request.clientMsgId = client_msg_id
+
+        d = Deferred()
+        self._response_deferreds[client_msg_id] = d
+
+        self.client.send(request)
+        return d
+
+    def get_positions(self):
         request = ProtoOAGetPositionListReq()
         request.ctidTraderAccountId = self.ctid_trader_account_id
-        return self.client.send(request)
+        return self._send_request(request)
 
     def submit_order(self, order_data):
         if not self.is_connected:
@@ -642,7 +661,7 @@ class CTraderClient:
         request.volume = volume_in_units
 
         print(f"Submitting order: {request}")
-        self.client.send(request)
+        return self._send_request(request)
 
     def get_tradable_symbols(self):
         if not self.is_connected:
@@ -671,7 +690,7 @@ class CTraderClient:
         request.fromTimestamp = from_timestamp
         request.toTimestamp = to_timestamp
 
-        return self.client.send(request)
+        return self._send_request(request)
 
     def check_connection(self):
         return self.is_connected

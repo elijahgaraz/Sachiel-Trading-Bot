@@ -28,7 +28,10 @@ class MainApp(tk.Tk):
         self.geometry("1200x800")
         
         # Initialize cTrader Client but do not connect
-        self.ctrader_client = CTraderClient(on_status_update=self.update_connection_status_ui)
+        self.ctrader_client = CTraderClient(
+            on_account_update=self.update_account_info_ui,
+            on_status_update=self.update_connection_status_ui
+        )
         
         # Create notebook for tabs
         self.notebook = ttk.Notebook(self)
@@ -57,7 +60,20 @@ class MainApp(tk.Tk):
         
         # Set up closing handler
         self.protocol("WM_DELETE_WINDOW", self.on_closing)
+
+    def update_account_info_ui(self, summary: dict):
+        """Callback to update the UI with account information."""
+        def do_update():
+            if hasattr(self, 'settings_tab') and self.settings_tab.winfo_exists():
+                balance = summary.get('balance')
+                if balance is not None:
+                    self.settings_tab.account_frame.pack(fill=tk.X, padx=5, pady=5)
+                    self.settings_tab.account_balance.config(text=f"Balance: ${balance:,.2f}")
+                else:
+                    self.settings_tab.account_frame.pack_forget()
         
+        self.after(0, do_update)
+
     def update_connection_status_ui(self, status: str, color: str):
         """
         Callback to update the UI with connection status.

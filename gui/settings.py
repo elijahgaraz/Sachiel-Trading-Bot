@@ -80,9 +80,6 @@ class SettingsTab(ttk.Frame):
         self.account_balance = ttk.Label(self.account_frame, text="Balance: N/A")
         self.account_balance.pack(pady=2)
         
-        self.account_status = ttk.Label(self.account_frame, text="Status: N/A")
-        self.account_status.pack(pady=2)
-        
         self.account_frame.pack_forget()  # Hide initially
 
     def toggle_show(self, entry_widget):
