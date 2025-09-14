@@ -96,8 +96,9 @@ class OAuthCallbackHandler(BaseHTTPRequestHandler):
              super().log_message(format, *args)
 
 class CTraderClient:
-    def __init__(self, on_account_update: Optional[Callable[[Dict[str, Any]], None]] = None):
+    def __init__(self, on_account_update: Optional[Callable[[Dict[str, Any]], None]] = None, on_status_update: Optional[Callable[[str, str], None]] = None):
         self.on_account_update = on_account_update
+        self.on_status_update = on_status_update
         self.is_connected: bool = False
         self._is_client_connected: bool = False
         self._last_error: str = ""
@@ -120,7 +121,7 @@ class CTraderClient:
         self.symbol_details_map: Dict[int, Any] = {}
         self.subscribed_spot_symbol_ids: set[int] = set()
 
-        self._client: Optional[Client] = None
+        self.client: Optional[Client] = None
         self._message_id_counter: int = 1
         self._reactor_thread: Optional[threading.Thread] = None
         self._auth_code: Optional[str] = None
@@ -133,10 +134,10 @@ class CTraderClient:
                 else EndPoints.PROTOBUF_DEMO_HOST
             )
             port = EndPoints.PROTOBUF_PORT
-            self._client = Client(host, port, TcpProtocol)
-            self._client.setConnectedCallback(self._on_client_connected)
-            self._client.setDisconnectedCallback(self._on_client_disconnected)
-            self._client.setMessageReceivedCallback(self._on_message_received)
+            self.client = Client(host, port, TcpProtocol)
+            self.client.setConnectedCallback(self._on_client_connected)
+            self.client.setDisconnectedCallback(self._on_client_disconnected)
+            self.client.setMessageReceivedCallback(self._on_message_received)
         else:
             print("Trader initialized in MOCK mode.")
 
@@ -203,6 +204,8 @@ class CTraderClient:
         self.is_connected = False
         self._is_client_connected = False
         self._account_auth_initiated = False
+        if self.on_status_update:
+            self.on_status_update("Disconnected", "red")
 
     def _on_message_received(self, client: Client, message: Any) -> None:
         try:
@@ -259,8 +262,8 @@ class CTraderClient:
         if not self._access_token:
             self._last_error = "Critical: OAuth access token not available for subsequent account operations."
             print(self._last_error)
-            if self._client:
-                self._client.stopService()
+            if self.client:
+                self.client.stopService()
             return
 
         if self.ctid_trader_account_id and self._access_token:
@@ -272,28 +275,30 @@ class CTraderClient:
         else:
             self._last_error = "Critical: Cannot proceed with account auth/discovery. Missing ctidTraderAccountId or access token after app auth."
             print(self._last_error)
-            if self._client:
-                self._client.stopService()
+            if self.client:
+                self.client.stopService()
 
     def _handle_account_auth_response(self, response: ProtoOAAccountAuthRes) -> None:
         if response.ctidTraderAccountId == self.ctid_trader_account_id:
             print(f"Successfully authenticated account {self.ctid_trader_account_id}.")
             self.is_connected = True
             self._last_error = ""
+            if self.on_status_update:
+                self.on_status_update("Connected", "green")
             self._send_get_trader_request(self.ctid_trader_account_id)
             self._send_get_symbols_list_request()
         else:
             self._last_error = "Account authentication failed (ID mismatch or error)."
             self.is_connected = False
-            if self._client:
-                self._client.stopService()
+            if self.client:
+                self.client.stopService()
 
     def _handle_get_account_list_response(self, response: ProtoOAGetAccountListByAccessTokenRes) -> None:
         accounts = getattr(response, 'ctidTraderAccount', [])
         if not accounts:
             self._last_error = "No trading accounts found for this access token."
-            if self._client and self._is_client_connected:
-                self._client.stopService()
+            if self.client and self._is_client_connected:
+                self.client.stopService()
             return
 
         selected_account = accounts[0]
@@ -403,6 +408,8 @@ class CTraderClient:
 
         webbrowser.open(auth_url_with_params)
         self._last_error = "OAuth2: Waiting for authorization code..."
+        if self.on_status_update:
+            self.on_status_update("Connecting...", "orange")
 
         try:
             auth_code = self._auth_code_queue.get(timeout=120)
@@ -482,11 +489,11 @@ class CTraderClient:
             return False
 
     def _start_openapi_client_service(self):
-        if self.is_connected or (self._client and getattr(self._client, 'isConnected', False)):
+        if self.is_connected or (self.client and getattr(self.client, 'isConnected', False)):
             return True
 
         try:
-            self._client.startService()
+            self.client.startService()
             if _reactor_installed and not reactor.running:
                 self._reactor_thread = threading.Thread(target=lambda: reactor.run(installSignalHandlers=0), daemon=True)
                 self._reactor_thread.start()
@@ -530,8 +537,8 @@ class CTraderClient:
         return time.time() > (self._token_expires_at - buffer_seconds)
 
     def disconnect(self) -> None:
-        if self._client:
-            self._client.stopService()
+        if self.client:
+            self.client.stopService()
         if _reactor_installed and reactor.running:
             reactor.callFromThread(reactor.stop)
         self.is_connected = False
@@ -554,28 +561,28 @@ class CTraderClient:
         req = ProtoOAAccountAuthReq()
         req.ctidTraderAccountId = ctid
         req.accessToken = self._access_token or ""
-        self._client.send(req)
+        self.client.send(req)
 
     def _send_get_account_list_request(self) -> None:
         if not self._ensure_valid_token():
             return
         req = ProtoOAGetAccountListByAccessTokenReq()
         req.accessToken = self._access_token
-        self._client.send(req)
+        self.client.send(req)
 
     def _send_get_trader_request(self, ctid: int) -> None:
         if not self._ensure_valid_token():
             return
         req = ProtoOATraderReq()
         req.ctidTraderAccountId = ctid
-        self._client.send(req)
+        self.client.send(req)
 
     def _send_get_symbols_list_request(self) -> None:
         if not self._ensure_valid_token():
             return
         req = ProtoOASymbolsListReq()
         req.ctidTraderAccountId = self.ctid_trader_account_id
-        self._client.send(req)
+        self.client.send(req)
 
     def _send_subscribe_spots_request(self, ctid_trader_account_id: int, symbol_ids: List[int]) -> None:
         if not self._ensure_valid_token():
@@ -583,13 +590,13 @@ class CTraderClient:
         req = ProtoOASubscribeSpotsReq()
         req.ctidTraderAccountId = ctid_trader_account_id
         req.symbolId.extend(symbol_ids)
-        self._client.send(req)
+        self.client.send(req)
 
     def _ensure_valid_token(self) -> bool:
         if self._is_token_expired():
             if not self.refresh_access_token():
-                if self._client and self._is_client_connected:
-                    self._client.stopService()
+                if self.client and self._is_client_connected:
+                    self.client.stopService()
                 self.is_connected = False
                 return False
         return True
@@ -600,7 +607,7 @@ class CTraderClient:
             return None
         request = ProtoOAGetPositionListReq()
         request.ctidTraderAccountId = self.ctid_trader_account_id
-        return self._client.send(request)
+        return self.client.send(request)
 
     def submit_order(self, order_data):
         if not self.is_connected:
@@ -635,7 +642,7 @@ class CTraderClient:
         request.volume = volume_in_units
 
         print(f"Submitting order: {request}")
-        self._client.send(request)
+        self.client.send(request)
 
     def get_tradable_symbols(self):
         if not self.is_connected:
@@ -657,9 +664,14 @@ class CTraderClient:
         request.ctidTraderAccountId = self.ctid_trader_account_id
         request.symbolId = symbol_id
         request.period = ProtoOATrendbarPeriod.M1
-        request.count = 100
 
-        return self._client.send(request)
+        # Calculate timestamps for the last 100 minutes
+        to_timestamp = int(time.time() * 1000)
+        from_timestamp = to_timestamp - (100 * 60 * 1000)
+        request.fromTimestamp = from_timestamp
+        request.toTimestamp = to_timestamp
+
+        return self.client.send(request)
 
     def check_connection(self):
         return self.is_connected

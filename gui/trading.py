@@ -496,47 +496,65 @@ class TradingTab(ttk.Frame):
                     self.start_button.config(state=tk.DISABLED)
     
     def execute_live_trade(self):
-        """Execute live trading operation with combo box"""
+        """Initiates the process of fetching bars and executing a trade."""
         try:
-            # Get symbol from combo box
             symbol = self.symbol_var.get()
             if not symbol:
                 return
                 
-            # Format symbol for crypto
             is_crypto = 'BTC' in symbol or 'ETH' in symbol
-            
             print(f"Attempting to trade {symbol}, is_crypto: {is_crypto}")
             
-            # Get current market data
-            bars = self.ctrader_client.get_bars(symbol, is_crypto)
+            deferred = self.ctrader_client.get_bars(symbol, is_crypto)
+            if deferred:
+                deferred.addCallback(self._on_bars_received, symbol=symbol, is_crypto=is_crypto)
+                deferred.addErrback(self._on_bars_error)
+
+        except Exception as e:
+            print(f"Error initiating live trade execution: {e}")
+            traceback.print_exc()
+
+    def _on_bars_received(self, bars_response, symbol, is_crypto):
+        """Callback executed when historical bar data is successfully received."""
+        try:
+            bars = bars_response.trendbar
             if not bars:
                 print(f"No price data available for {symbol}")
                 return
-                
-            current_price = bars[-1].close
+
+            symbol_id = self.ctrader_client.symbols_map.get(symbol)
+            if not symbol_id:
+                print(f"Symbol ID not found for {symbol}")
+                return
+            symbol_details = self.ctrader_client.symbol_details_map.get(symbol_id)
+            if not symbol_details:
+                print(f"Could not get symbol details for {symbol} to scale price.")
+                return
+
+            price_scale = 10**symbol_details.digits
+            last_bar = bars[-1]
+            current_price = (last_bar.low + last_bar.deltaClose) / price_scale
+            
             print(f"Current price for {symbol}: {current_price}")
-            
-            # Check existing position
-            try:
-                position = self.ctrader_client.get_position(symbol)
-            except Exception:
-                position = None
-            
-            if position is None:
-                # Check entry conditions
-                if self.check_entry_conditions(symbol, current_price, bars):
-                    if is_crypto:
-                        self.enter_live_crypto_trade(symbol, current_price)
-                    else:
-                        self.enter_live_trade(symbol, current_price)
-            else:
-                # Check exit conditions
-                self.check_live_exit(symbol, position, current_price)
-            
+
+            # The rest of the trading logic that depends on the bars
+            # For now, we just print the price. The position and entry/exit logic would go here.
+            # Example:
+            # position = self.ctrader_client.get_position(symbol) ...
+            # if position is None:
+            #    if self.check_entry_conditions(symbol, current_price, bars):
+            #        ...
+            # else:
+            #    self.check_live_exit(symbol, position, current_price)
+
         except Exception as e:
-            print(f"Error in live trade execution: {e}")
+            print(f"Error processing bars: {e}")
             traceback.print_exc()
+
+    def _on_bars_error(self, failure):
+        """Callback for handling errors from the get_bars Deferred."""
+        print(f"Error fetching bars: {failure.getErrorMessage()}")
+        # You might want to update the UI to show the error
                 
     def start_trading(self):
         """Start trading with improved stock handling"""

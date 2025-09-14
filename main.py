@@ -28,7 +28,7 @@ class MainApp(tk.Tk):
         self.geometry("1200x800")
         
         # Initialize cTrader Client but do not connect
-        self.ctrader_client = CTraderClient()
+        self.ctrader_client = CTraderClient(on_status_update=self.update_connection_status_ui)
         
         # Create notebook for tabs
         self.notebook = ttk.Notebook(self)
@@ -58,23 +58,21 @@ class MainApp(tk.Tk):
         # Set up closing handler
         self.protocol("WM_DELETE_WINDOW", self.on_closing)
         
-        # Start periodic connection check
-        self.check_connection()
+    def update_connection_status_ui(self, status: str, color: str):
+        """Callback to update the UI with connection status."""
+        if hasattr(self, 'settings_tab') and self.settings_tab.winfo_exists():
+            self.settings_tab.connection_status.config(text=status, foreground=color)
+            self.settings_tab.status_label.config(text=f"Status: {status}", foreground=color)
+            if status == "Connected":
+                self.settings_tab.disconnect_button.config(state=tk.NORMAL)
+            else:
+                self.settings_tab.disconnect_button.config(state=tk.DISABLED)
+
 
     def _run_event_loop(self):
         """Run the event loop in the background thread"""
         asyncio.set_event_loop(self.loop)
         self.loop.run_forever()
-
-    def check_connection(self):
-        """Periodically check cTrader connection status."""
-        if self.ctrader_client:
-            is_connected, status_message = self.ctrader_client.get_connection_status()
-            # This is just a passive check. The Settings tab will show the status.
-            # We are no longer automatically reconnecting here.
-
-        # Schedule next check in 30 seconds
-        self.after(30000, self.check_connection)
 
     def on_closing(self):
         """Clean up resources before closing"""
