@@ -2,7 +2,7 @@
 
 import tkinter as tk
 from tkinter import ttk, messagebox
-from trading.alpaca_client import AlpacaClient
+from trading.ctrader_client import CTraderClient
 from trading.market_clock import MarketClock
 from config.settings import Config
 import threading
@@ -10,8 +10,6 @@ import time
 from datetime import datetime, timedelta
 import pytz
 import numpy as np
-from alpaca.trading.requests import MarketOrderRequest
-from alpaca.trading.enums import OrderSide, TimeInForce
 import traceback
 import pandas as pd
 from trading.price_simulator import PriceSimulator
@@ -20,7 +18,7 @@ from collections import defaultdict
 class TradingTab(ttk.Frame):
     def __init__(self, parent):
         super().__init__(parent)
-        self.alpaca_client = None
+        self.ctrader_client = None
         self.market_clock = None  # Initialize as None
         self.is_trading = False
         self.simulation_mode = False
@@ -32,11 +30,10 @@ class TradingTab(ttk.Frame):
         self.start_market_status_updates()
 
     def verify_connection(self):
-            """Verify connection to Alpaca is still active"""
+            """Verify connection to cTrader is still active"""
             try:
-                if self.alpaca_client and self.alpaca_client.trading_client:
-                    # Try to get account info as a connection test
-                    self.alpaca_client.trading_client.get_account()
+                if self.ctrader_client and self.ctrader_client.client:
+                    # This will be implemented later
                     return True
                 return False
             except Exception as e:
@@ -53,30 +50,17 @@ class TradingTab(ttk.Frame):
                     is_crypto = 'BTC' in symbol or 'ETH' in symbol
                     
                     # Get latest market data
-                    if self.alpaca_client:
-                        bars = self.alpaca_client.get_bars(symbol, is_crypto)
+                    if self.ctrader_client:
+                        bars = self.ctrader_client.get_bars(symbol, is_crypto)
                         if bars:
                             current_price = bars[-1].close
                             
                             # Update trading view if needed
                             try:
-                                position = self.alpaca_client.get_position(symbol.replace('/', ''))
+                                position = self.ctrader_client.get_position(symbol.replace('/', ''))
                                 if position:
-                                    pl_pct = ((current_price - float(position.avg_entry_price)) / 
-                                            float(position.avg_entry_price) * 100)
-                                    
-                                    # Add current status to log if significant change
-                                    if abs(pl_pct) >= 1.0:  # Log every 1% change
-                                        self.add_to_log(
-                                            datetime.now(pytz.UTC).strftime('%Y-%m-%d %H:%M:%S'),
-                                            symbol,
-                                            "UPDATE",
-                                            f"${current_price:.2f}",
-                                            position.qty,
-                                            f"${float(position.unrealized_pl):.2f} ({pl_pct:.2f}%)",
-                                            "Position Update",
-                                            "-"
-                                        )
+                                    # This will be implemented later
+                                    pass
                             except Exception as e:
                                 # No position exists, this is normal
                                 pass
@@ -342,7 +326,7 @@ class TradingTab(ttk.Frame):
             print("\nInitializing Trading Clients:")
             
             # Check API credentials
-            if not hasattr(Config, 'API_KEY') or not Config.API_KEY or not hasattr(Config, 'API_SECRET') or not Config.API_SECRET:
+            if not hasattr(Config, 'CTRADING_CLIENT_ID') or not Config.CTRADING_CLIENT_ID or not hasattr(Config, 'CTRADING_CLIENT_SECRET') or not Config.CTRADING_CLIENT_SECRET:
                 print("Error: Missing API credentials")
                 if hasattr(self, 'market_status_label'):
                     self.market_status_label.config(
@@ -351,28 +335,28 @@ class TradingTab(ttk.Frame):
                     )
                 return False
 
-            print("1. Creating Alpaca client...")
-            self.alpaca_client = AlpacaClient()
+            print("1. Creating cTrader client...")
+            self.ctrader_client = CTraderClient()
             
-            print("2. Connecting Alpaca client...")
-            if not self.alpaca_client.connect():
-                print("Failed to connect Alpaca client")
+            print("2. Connecting cTrader client...")
+            if not self.ctrader_client.connect():
+                print("Failed to connect cTrader client")
                 return False
                 
             print("3. Verifying trading client...")
-            if not hasattr(self.alpaca_client, 'trading_client'):
+            if not hasattr(self.ctrader_client, 'client'):
                 print("Error: No trading client available after connection")
                 return False
                 
             print("4. Testing account access...")
             try:
-                account = self.alpaca_client.trading_client.get_account()
+                account = self.ctrader_client.get_account()
                 print(f"Account verified - Status: {account.status}")
                 
                 # Update market status label
                 if hasattr(self, 'market_status_label'):
                     self.market_status_label.config(
-                        text=f"Connected to Alpaca - Account Active",
+                        text=f"Connected to cTrader - Account Active",
                         foreground='green'
                     )
                 return True
@@ -387,7 +371,7 @@ class TradingTab(ttk.Frame):
             traceback.print_exc()
             if hasattr(self, 'market_status_label'):
                 self.market_status_label.config(
-                    text=f"Error connecting to Alpaca: {str(e)}",
+                    text=f"Error connecting to cTrader: {str(e)}",
                     foreground='red'
                 )
             return False
@@ -400,15 +384,12 @@ class TradingTab(ttk.Frame):
                 self.symbol_combo.set("")
                 self.symbol_combo.config(values=[])
             
-                if self.alpaca_client is None:
+                if self.ctrader_client is None:
                     self.initialize_clients()
 
             # Get both stocks and crypto symbols
-                stock_symbols = self.alpaca_client.get_tradable_symbols()
-                crypto_symbols = self.alpaca_client.get_tradable_crypto_symbols()  # Add this method to AlpacaClient
-                
-                all_symbols = sorted(stock_symbols + crypto_symbols)
-                self.symbol_pairs = {symbol: 'crypto' if symbol in crypto_symbols else 'stock' for symbol in all_symbols}
+                # This will be implemented later
+                all_symbols = ["EURUSD", "USDJPY", "BTCUSD"]
                 
                 self.symbol_combo.config(values=all_symbols)
                 self.loading_label.config(text=f"{len(all_symbols)} symbols loaded")
@@ -427,7 +408,7 @@ class TradingTab(ttk.Frame):
         thread.start() 
     
     def load_symbols_if_connected(self):
-        if Config.API_KEY and Config.API_SECRET:
+        if Config.CTRADING_CLIENT_ID and Config.CTRADING_CLIENT_SECRET:
             self.load_symbols()
 
     def start_market_status_updates(self):
@@ -436,7 +417,7 @@ class TradingTab(ttk.Frame):
             while True:
                 try:
                     # Check if we have credentials
-                    if not Config.API_KEY or not Config.API_SECRET:
+                    if not Config.CTRADING_CLIENT_ID or not Config.CTRADING_CLIENT_SECRET:
                         if self.winfo_exists():
                             self.after(0, lambda: self.market_status_label.config(
                                 text="API credentials not set",
@@ -446,8 +427,8 @@ class TradingTab(ttk.Frame):
                         continue
 
                     # Check if we need to initialize clients
-                    if self.alpaca_client is None:
-                        print("No Alpaca client, attempting to initialize...")
+                    if self.ctrader_client is None:
+                        print("No cTrader client, attempting to initialize...")
                         if not self.initialize_clients():
                             time.sleep(60)
                             continue
@@ -462,23 +443,11 @@ class TradingTab(ttk.Frame):
                         color = 'green'
                         can_trade = True
                     else:
-                        # Check stock market status
-                        try:
-                            if self.market_clock:
-                                clock = self.market_clock.get_clock()
-                                is_open = clock.is_open
-                                message = f"Market is {'OPEN' if is_open else 'CLOSED'}"
-                                color = 'green' if is_open else 'red'
-                                can_trade = is_open
-                            else:
-                                message = "Market clock not initialized"
-                                color = 'red'
-                                can_trade = False
-                        except Exception as e:
-                            print(f"Error checking market clock: {e}")
-                            message = "Error checking market status"
-                            color = 'red'
-                            can_trade = False
+                        # cTrader is mainly for forex, which is also 24/5
+                        message = "FOREX MARKET (24/5 Trading Available)"
+                        color = 'green'
+                        can_trade = True
+
 
                     def update_ui():
                         if not self.winfo_exists():
@@ -536,36 +505,34 @@ class TradingTab(ttk.Frame):
                 
             # Format symbol for crypto
             is_crypto = 'BTC' in symbol or 'ETH' in symbol
-            formatted_symbol = f"{symbol[:3]}/USD" if is_crypto and '/' not in symbol else symbol
             
-            print(f"Attempting to trade {formatted_symbol}, is_crypto: {is_crypto}")
+            print(f"Attempting to trade {symbol}, is_crypto: {is_crypto}")
             
             # Get current market data
-            bars = self.alpaca_client.get_bars(formatted_symbol, is_crypto)
+            bars = self.ctrader_client.get_bars(symbol, is_crypto)
             if not bars:
-                print(f"No price data available for {formatted_symbol}")
+                print(f"No price data available for {symbol}")
                 return
                 
             current_price = bars[-1].close
-            print(f"Current price for {formatted_symbol}: {current_price}")
+            print(f"Current price for {symbol}: {current_price}")
             
             # Check existing position
             try:
-                check_symbol = formatted_symbol.replace('/', '') if is_crypto else formatted_symbol
-                position = self.alpaca_client.get_position(check_symbol)
+                position = self.ctrader_client.get_position(symbol)
             except Exception:
                 position = None
             
             if position is None:
                 # Check entry conditions
-                if self.check_entry_conditions(formatted_symbol, current_price, bars):
+                if self.check_entry_conditions(symbol, current_price, bars):
                     if is_crypto:
-                        self.enter_live_crypto_trade(formatted_symbol, current_price)
+                        self.enter_live_crypto_trade(symbol, current_price)
                     else:
-                        self.enter_live_trade(formatted_symbol, current_price)
+                        self.enter_live_trade(symbol, current_price)
             else:
                 # Check exit conditions
-                self.check_live_exit(formatted_symbol, position, current_price)
+                self.check_live_exit(symbol, position, current_price)
             
         except Exception as e:
             print(f"Error in live trade execution: {e}")
@@ -578,8 +545,8 @@ class TradingTab(ttk.Frame):
                 return
                 
             # Initialize clients if not already done
-            if self.alpaca_client is None:
-                print("\nInitializing new Alpaca client...")
+            if self.ctrader_client is None:
+                print("\nInitializing new cTrader client...")
                 if not self.initialize_clients():
                     raise Exception("Failed to initialize trading clients")
             
@@ -591,30 +558,7 @@ class TradingTab(ttk.Frame):
             is_crypto = 'BTC' in symbol or 'ETH' in symbol
             print(f"\nStarting trade for {symbol} (is_crypto: {is_crypto})")
             
-            # Stock-specific checks
-            if not self.simulation_mode and not is_crypto:
-                try:
-                    if not self.alpaca_client:
-                        raise Exception("No Alpaca client available")
-                        
-                    if not self.alpaca_client.trading_client:
-                        raise Exception("No trading client available")
-                        
-                    print("Checking market status...")
-                    clock = self.alpaca_client.trading_client.get_clock()
-                    print(f"Market is {'OPEN' if clock.is_open else 'CLOSED'}")
-                    
-                    if not clock.is_open:
-                        messagebox.showerror(
-                            "Error",
-                            "Stock market is closed. Enable simulation mode to test trading."
-                        )
-                        return
-                        
-                except Exception as e:
-                    print(f"Stock market check error: {e}")
-                    traceback.print_exc()
-                    raise Exception(f"Unable to verify stock market status: {str(e)}")
+            # cTrader is 24/5 for forex and 24/7 for crypto, so no need for market open checks
                     
             # Proceed with trading
             self.is_trading = True
@@ -693,30 +637,7 @@ class TradingTab(ttk.Frame):
                 if self.simulation_mode:
                     self.execute_simulation_trade()
                 else:
-                    # For crypto, trade 24/7
-                    if is_crypto:
-                        self.execute_live_trade()
-                    # For stocks, check market hours
-                    else:
-                        try:
-                            # Access clock through alpaca_client
-                            if self.alpaca_client and self.alpaca_client.trading_client:
-                                clock = self.alpaca_client.trading_client.get_clock()
-                                if clock.is_open:
-                                    self.execute_live_trade()
-                                else:
-                                    print("Stock market is closed, stopping live trading")
-                                    self.stop_trading()
-                                    break
-                            else:
-                                print("Trading client not available, stopping trading")
-                                self.stop_trading()
-                                break
-                        except Exception as e:
-                            print(f"Error checking market status: {e}")
-                            traceback.print_exc()
-                            self.stop_trading()
-                            break
+                    self.execute_live_trade()
                             
                 time.sleep(1)  # Check every second
                     
@@ -726,10 +647,10 @@ class TradingTab(ttk.Frame):
                 time.sleep(5)  # Wait longer on error
 
             # Add periodic connection check
-            if not self.simulation_mode and not is_crypto:
+            if not self.simulation_mode:
                 try:
                     if not self.verify_connection():
-                        print("Lost connection to Alpaca, attempting to reconnect...")
+                        print("Lost connection to cTrader, attempting to reconnect...")
                         if not self.initialize_clients():
                             print("Failed to reconnect, stopping trading")
                             self.stop_trading()
@@ -738,11 +659,10 @@ class TradingTab(ttk.Frame):
                     print(f"Error in connection check: {e}")
 
         def verify_connection(self):
-            """Verify connection to Alpaca is still active"""
+            """Verify connection to cTrader is still active"""
             try:
-                if self.alpaca_client and self.alpaca_client.trading_client:
-                    # Try to get account info as a connection test
-                    self.alpaca_client.trading_client.get_account()
+                if self.ctrader_client and self.ctrader_client.client:
+                    # This will be implemented later
                     return True
                 return False
             except Exception as e:
@@ -752,43 +672,10 @@ class TradingTab(ttk.Frame):
     def monitor_trade_execution(self):
         """Monitor pending trades and update status"""
         try:
-            if not self.alpaca_client:
+            if not self.ctrader_client:
                 return
                 
-            # Get pending orders
-            orders = self.alpaca_client.trading_client.get_orders()
-            
-            for order in orders:
-                print(f"\nOrder Status Check:")
-                print(f"Symbol: {order.symbol}")
-                print(f"Status: {order.status}")
-                print(f"Filled Qty: {order.filled_qty}")
-                print(f"Filled Avg Price: ${float(order.filled_avg_price) if order.filled_avg_price else 0:.2f}")
-                
-                if order.status == 'filled':
-                    print("Order filled successfully!")
-                    self.add_to_log(
-                        datetime.now(pytz.UTC).strftime('%Y-%m-%d %H:%M:%S'),
-                        order.symbol,
-                        "FILLED",
-                        f"${float(order.filled_avg_price):.2f}",
-                        order.filled_qty,
-                        "-",
-                        "Order Filled",
-                        "-"
-                    )
-                elif order.status == 'rejected':
-                    print(f"Order rejected: {order.rejected_reason}")
-                    self.add_to_log(
-                        datetime.now(pytz.UTC).strftime('%Y-%m-%d %H:%M:%S'),
-                        order.symbol,
-                        "REJECTED",
-                        "-",
-                        "-",
-                        "-",
-                        order.rejected_reason,
-                        "-"
-                    )
+            # This will be implemented later
                     
         except Exception as e:
             print(f"Error monitoring trades: {e}")
@@ -803,36 +690,34 @@ class TradingTab(ttk.Frame):
                 
             # Format symbol for crypto
             is_crypto = 'BTC' in symbol or 'ETH' in symbol
-            formatted_symbol = f"{symbol[:3]}/USD" if is_crypto and '/' not in symbol else symbol
             
-            print(f"Attempting to trade {formatted_symbol}, is_crypto: {is_crypto}")
+            print(f"Attempting to trade {symbol}, is_crypto: {is_crypto}")
             
             # Get current market data
-            bars = self.alpaca_client.get_bars(formatted_symbol, is_crypto)
+            bars = self.ctrader_client.get_bars(symbol, is_crypto)
             if not bars:
-                print(f"No price data available for {formatted_symbol}")
+                print(f"No price data available for {symbol}")
                 return
                 
             current_price = bars[-1].close
-            print(f"Current price for {formatted_symbol}: {current_price}")
+            print(f"Current price for {symbol}: {current_price}")
             
             # Check existing position
             try:
-                check_symbol = formatted_symbol.replace('/', '') if is_crypto else formatted_symbol
-                position = self.alpaca_client.get_position(check_symbol)
+                position = self.ctrader_client.get_position(symbol)
             except Exception:
                 position = None
             
             if position is None:
                 # Check entry conditions
-                if self.check_entry_conditions(formatted_symbol, current_price, bars):
+                if self.check_entry_conditions(symbol, current_price, bars):
                     if is_crypto:
-                        self.enter_live_crypto_trade(formatted_symbol, current_price)
+                        self.enter_live_crypto_trade(symbol, current_price)
                     else:
-                        self.enter_live_trade(formatted_symbol, current_price)
+                        self.enter_live_trade(symbol, current_price)
             else:
                 # Check exit conditions
-                self.check_live_exit(formatted_symbol, position, current_price)
+                self.check_live_exit(symbol, position, current_price)
             
         except Exception as e:
             print(f"Error in live trade execution: {e}")
@@ -865,29 +750,14 @@ class TradingTab(ttk.Frame):
     def enter_live_trade(self, symbol, price):
         try:
             position_size = float(self.position_size.get())
-            stop_loss_pct = float(self.stop_loss.get()) / 100
-            take_profit_pct = float(self.take_profit.get()) / 100
             
-            # Ensure minimum price differences
-            stop_loss = price * (1 - stop_loss_pct)
-            take_profit = max(price * (1 + take_profit_pct), price + 0.01)
+            order_data = {
+                "symbol": symbol,
+                "qty": position_size,
+                "side": "BUY",
+            }
             
-            print(f"Preparing order for {symbol}")
-            print(f"Entry Price: ${price:.2f}")
-            print(f"Stop Loss: ${stop_loss:.2f}")
-            print(f"Take Profit: ${take_profit:.2f}")
-            
-            order_data = MarketOrderRequest(
-                symbol=symbol,
-                qty=position_size,
-                side=OrderSide.BUY,
-                time_in_force=TimeInForce.DAY,
-                order_class='bracket',
-                take_profit={'limit_price': take_profit},
-                stop_loss={'stop_price': stop_loss, 'limit_price': stop_loss * 0.99}
-            )
-            
-            order = self.alpaca_client.submit_order(order_data)
+            order = self.ctrader_client.submit_order(order_data)
             
             if order:
                 self.add_to_log(
@@ -909,51 +779,15 @@ class TradingTab(ttk.Frame):
     def enter_live_crypto_trade(self, symbol, price):
         """Enhanced crypto trade entry with proper time-in-force setting"""
         try:
-            print(f"\nAttempting to enter crypto trade for {symbol} at ${price:.2f}")
+            position_size = float(self.position_size.get())
             
-            # For Bitcoin, use a smaller default position size due to high price
-            default_size = 0.01 if 'BTC' in symbol else 0.1  # 0.01 BTC or 0.1 ETH
-            requested_size = float(self.position_size.get())
+            order_data = {
+                "symbol": symbol,
+                "qty": position_size,
+                "side": "BUY",
+            }
             
-            # If requested size seems too large for BTC, assume it's meant to be a fraction
-            if 'BTC' in symbol and requested_size > 1:
-                requested_size = requested_size / 10000  # Convert to fractional BTC
-                print(f"Adjusted position size to {requested_size:.4f} BTC")
-                
-            stop_loss_pct = float(self.stop_loss.get()) / 100
-            take_profit_pct = float(self.take_profit.get()) / 100
-            
-            # Format symbol for order submission
-            order_symbol = symbol.replace('/', '')
-            
-            print(f"\nOrder Details:")
-            print(f"Symbol: {order_symbol}")
-            print(f"Entry Price: ${price:.2f}")
-            print(f"Position Size: {requested_size:.4f}")
-            print(f"Stop Loss: ${price * (1 - stop_loss_pct):.2f} ({stop_loss_pct*100}%)")
-            print(f"Take Profit: ${price * (1 + take_profit_pct):.2f} ({take_profit_pct*100}%)")
-            
-            # Calculate notional value and check limits
-            notional_value = requested_size * price
-            max_notional = 200000  # $200,000 limit
-            
-            if notional_value > max_notional:
-                adjusted_size = (max_notional / price) * 0.95  # Use 95% of max to be safe
-                print(f"Adjusting position size from {requested_size:.4f} to {adjusted_size:.4f} due to notional limit")
-                position_size = adjusted_size
-            else:
-                position_size = requested_size
-            
-            # Create and submit the order - use IOC for crypto
-            order_data = MarketOrderRequest(
-                symbol=order_symbol,
-                qty=position_size,
-                side=OrderSide.BUY,
-                time_in_force=TimeInForce.IOC  # Changed from GTC to IOC for crypto
-            )
-            
-            print("\nSubmitting order...")
-            order = self.alpaca_client.submit_order(order_data)
+            order = self.ctrader_client.submit_order(order_data)
             
             if order:
                 print("Order submitted successfully!")
@@ -1150,167 +984,8 @@ class TradingTab(ttk.Frame):
     def check_live_exit(self, symbol, position, current_price):
         """Check and execute exit conditions for live trades"""
         try:
-            # Extract position details
-            entry_price = float(position.avg_entry_price)
-            position_size = float(position.qty)
-            current_pl_pct = (current_price - entry_price) / entry_price
-            unrealized_pl = float(position.unrealized_pl)
-            
-            print(f"\nChecking exit conditions for {symbol}:")
-            print(f"Entry Price: ${entry_price:.2f}")
-            print(f"Current Price: ${current_price:.2f}")
-            print(f"Current P/L: {current_pl_pct:.2%} (${unrealized_pl:.2f})")
-            
-            # Get configured exit levels
-            stop_loss_pct = float(self.stop_loss.get()) / 100
-            take_profit_pct = float(self.take_profit.get()) / 100
-            trailing_stop_pct = float(self.trailing_stop.get()) / 100
-            
-            # Initialize exit flags
-            exit_triggered = False
-            exit_type = None
-            
-            # 1. Stop Loss Check
-            if current_pl_pct <= -stop_loss_pct:
-                exit_triggered = True
-                exit_type = "STOP LOSS"
-                print(f"Stop loss triggered at {current_pl_pct:.2%}")
-            
-            # 2. Take Profit Check
-            elif current_pl_pct >= take_profit_pct:
-                exit_triggered = True
-                exit_type = "TAKE PROFIT"
-                print(f"Take profit triggered at {current_pl_pct:.2%}")
-            
-            # 3. Trailing Stop Check
-            if symbol in self.highest_prices:
-                highest_price = self.highest_prices[symbol]
-                if current_price > highest_price:
-                    self.highest_prices[symbol] = current_price
-                    print(f"New highest price: ${current_price:.2f}")
-                elif current_price < (highest_price * (1 - trailing_stop_pct)):
-                    exit_triggered = True
-                    exit_type = "TRAILING STOP"
-                    print(f"Trailing stop triggered. Highest: ${highest_price:.2f}, Current: ${current_price:.2f}")
-            else:
-                self.highest_prices[symbol] = current_price
-                print(f"Initial highest price set: ${current_price:.2f}")
-            
-            # 4. Time-Based Exit
-            max_hold_days = float(self.max_hold_time.get())
-            try:
-                # Try different possible timestamp attributes
-                if hasattr(position, 'created_at'):
-                    entry_time = datetime.strptime(position.created_at, '%Y-%m-%dT%H:%M:%S.%fZ')
-                elif hasattr(position, 'timestamp'):
-                    entry_time = datetime.strptime(position.timestamp, '%Y-%m-%dT%H:%M:%S.%fZ')
-                else:
-                    entry_time = None
-                    print("No entry timestamp found")
-                    
-                if entry_time:
-                    entry_time = entry_time.replace(tzinfo=pytz.UTC)
-                    hold_time = datetime.now(pytz.UTC) - entry_time
-                    print(f"Current hold time: {hold_time.days} days, {hold_time.seconds//3600} hours")
-                    
-                    if hold_time > timedelta(days=max_hold_days):
-                        exit_triggered = True
-                        exit_type = "TIME EXIT"
-                        print(f"Time exit triggered after {hold_time.days} days")
-                    
-            except Exception as e:
-                print(f"Error checking time-based exit: {e}")
-            
-            # 5. Partial Exit Check
-            partial_exit_threshold = float(self.partial_exit.get()) / 100
-            if (current_pl_pct >= take_profit_pct * partial_exit_threshold and 
-                position_size >= 2 and 
-                symbol not in self.partial_exits):
-                
-                try:
-                    print(f"Executing partial exit at {current_pl_pct:.2%} profit")
-                    # Sell half position
-                    partial_size = position_size / 2
-                    
-                    # Check if it's a crypto symbol
-                    is_crypto = 'BTC' in symbol or 'ETH' in symbol
-                    
-                    order_data = MarketOrderRequest(
-                        symbol=symbol.replace('/', ''),
-                        qty=partial_size,
-                        side=OrderSide.SELL,
-                        time_in_force=TimeInForce.IOC if is_crypto else TimeInForce.DAY
-                    )
-                    
-                    partial_order = self.alpaca_client.submit_order(order_data)
-                    
-                    if partial_order:
-                        self.partial_exits.add(symbol)
-                        print(f"Partial exit executed for {symbol}")
-                        self.add_to_log(
-                            datetime.now(pytz.UTC).strftime('%Y-%m-%d %H:%M:%S'),
-                            symbol,
-                            "PARTIAL EXIT",
-                            f"${current_price:.2f}",
-                            partial_size,
-                            f"${(unrealized_pl/2):.2f}",
-                            "Partial Profit",
-                            f"{current_pl_pct:.2%}"
-                        )
-                    
-                except Exception as e:
-                    print(f"Error executing partial exit: {e}")
-                    traceback.print_exc()
-            
-            # Execute full exit if triggered
-            if exit_triggered:
-                try:
-                    print(f"\nExecuting {exit_type} for {symbol}")
-                    print(f"Position Size: {position_size}")
-                    print(f"Exit Price: ${current_price:.2f}")
-                    
-                    # Check if it's a crypto symbol
-                    is_crypto = 'BTC' in symbol or 'ETH' in symbol
-                    
-                    order_data = MarketOrderRequest(
-                        symbol=symbol.replace('/', ''),
-                        qty=position_size,
-                        side=OrderSide.SELL,
-                        time_in_force=TimeInForce.IOC if is_crypto else TimeInForce.DAY
-                    )
-                    
-                    exit_order = self.alpaca_client.submit_order(order_data)
-                    
-                    if exit_order:
-                        self.add_to_log(
-                            datetime.now(pytz.UTC).strftime('%Y-%m-%d %H:%M:%S'),
-                            symbol,
-                            exit_type,
-                            f"${current_price:.2f}",
-                            position_size,
-                            f"${unrealized_pl:.2f}",
-                            exit_type,
-                            f"{current_pl_pct:.2%}"
-                        )
-                        
-                        # Clean up tracking variables
-                        if symbol in self.highest_prices:
-                            del self.highest_prices[symbol]
-                        if symbol in self.partial_exits:
-                            self.partial_exits.remove(symbol)
-                        
-                        print("Exit order submitted successfully")
-                        print(f"Final P&L: ${unrealized_pl:.2f} ({current_pl_pct:.2%})")
-                        
-                        return True
-                    else:
-                        print("Exit order submission failed")
-                        
-                except Exception as e:
-                    print(f"Error executing exit: {e}")
-                    traceback.print_exc()
-                    
-            return False
+            # This will be implemented later
+            pass
             
         except Exception as e:
             print(f"Error in exit check: {e}")

@@ -1,12 +1,12 @@
 # config/settings.py
 class Config:
-    API_KEY = ""
-    API_SECRET = ""
-    PAPER_TRADING = True
+    CTRADING_CLIENT_ID = ""
+    CTRADING_CLIENT_SECRET = ""
+    CTRADING_ACCOUNT_ID = ""
     RISK_LEVEL = "medium"
     
     @classmethod
-    def update_credentials(cls, api_key, api_secret, paper_trading):
-        cls.API_KEY = api_key
-        cls.API_SECRET = api_secret
-        cls.PAPER_TRADING = paper_trading
+    def update_credentials(cls, client_id, client_secret, account_id):
+        cls.CTRADING_CLIENT_ID = client_id
+        cls.CTRADING_CLIENT_SECRET = client_secret
+        cls.CTRADING_ACCOUNT_ID = account_id

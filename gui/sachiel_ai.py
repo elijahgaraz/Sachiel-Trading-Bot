@@ -8,12 +8,9 @@ import os
 import time
 from datetime import datetime, timedelta
 import pytz
-from alpaca.data.requests import StockBarsRequest, CryptoBarsRequest
-from alpaca.data.timeframe import TimeFrame
-from alpaca.data.historical import StockHistoricalDataClient
 import queue
 import traceback
-from trading.alpaca_client import AlpacaClient
+from trading.ctrader_client import CTraderClient
 import pandas as pd
 import numpy as np
 
@@ -324,9 +321,9 @@ class SachielAITab(ttk.Frame):
             formatted_symbol = 'BTC/USD' if 'BTC' in symbol else symbol
             print(f"Getting signals for {formatted_symbol} (is_crypto: {is_crypto})")
 
-            client = AlpacaClient()
+            client = CTraderClient()
             if not client.connect():
-                print("Failed to connect to Alpaca")
+                print("Failed to connect to cTrader")
                 return None
 
             if is_crypto:
@@ -689,9 +686,9 @@ class SachielAITab(ttk.Frame):
     def train_ai_thread(self):
         """Training thread that avoids direct GUI updates"""
         try:
-            client = AlpacaClient()
+            client = CTraderClient()
             
-            self.queue_message('status', "Connecting to Alpaca...")
+            self.queue_message('status', "Connecting to cTrader...")
             self.queue_message('progress', 10)
             
             client.connect()
@@ -702,9 +699,10 @@ class SachielAITab(ttk.Frame):
             self.queue_message('status', "Fetching market data...")
             self.queue_message('progress', 30)
             
-            clock = client.trading_client.get_clock()
-            end = clock.timestamp
-            start = end - timedelta(days=int(self.training_period.get()))
+            # This will be implemented later
+            # clock = client.get_clock()
+            # end = clock.timestamp
+            # start = end - timedelta(days=int(self.training_period.get()))
             
             # Simulate training progress
             self.queue_message('status', "Training model...")

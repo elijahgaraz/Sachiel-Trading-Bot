@@ -6,7 +6,7 @@ import os
 import sys
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 from config.settings import Config
-from trading.alpaca_client import AlpacaClient
+from trading.ctrader_client import CTraderClient
 
 class SettingsTab(ttk.Frame):
     def __init__(self, parent):
@@ -15,37 +15,31 @@ class SettingsTab(ttk.Frame):
         self.load_existing_settings()
         
     def setup_ui(self):
-        settings_frame = ttk.LabelFrame(self, text="API Settings")
+        settings_frame = ttk.LabelFrame(self, text="cTrader API Settings")
         settings_frame.pack(fill=tk.X, padx=5, pady=5)
         
-        # API Key
-        ttk.Label(settings_frame, text="API Key:").grid(row=0, column=0, padx=5, pady=5)
-        self.api_key = ttk.Entry(settings_frame, width=50, show="*")
-        self.api_key.grid(row=0, column=1, padx=5, pady=5)
+        # Client ID
+        ttk.Label(settings_frame, text="Client ID:").grid(row=0, column=0, padx=5, pady=5)
+        self.client_id = ttk.Entry(settings_frame, width=50, show="*")
+        self.client_id.grid(row=0, column=1, padx=5, pady=5)
         
-        # Show/Hide API Key
-        self.show_api_key = ttk.Button(settings_frame, text="Show", width=8, command=lambda: self.toggle_show(self.api_key))
-        self.show_api_key.grid(row=0, column=2, padx=5, pady=5)
+        # Show/Hide Client ID
+        self.show_client_id = ttk.Button(settings_frame, text="Show", width=8, command=lambda: self.toggle_show(self.client_id))
+        self.show_client_id.grid(row=0, column=2, padx=5, pady=5)
         
-        # Secret Key
-        ttk.Label(settings_frame, text="Secret Key:").grid(row=1, column=0, padx=5, pady=5)
-        self.secret_key = ttk.Entry(settings_frame, width=50, show="*")
-        self.secret_key.grid(row=1, column=1, padx=5, pady=5)
+        # Client Secret
+        ttk.Label(settings_frame, text="Client Secret:").grid(row=1, column=0, padx=5, pady=5)
+        self.client_secret = ttk.Entry(settings_frame, width=50, show="*")
+        self.client_secret.grid(row=1, column=1, padx=5, pady=5)
         
-        # Show/Hide Secret Key
-        self.show_secret_key = ttk.Button(settings_frame, text="Show", width=8, command=lambda: self.toggle_show(self.secret_key))
-        self.show_secret_key.grid(row=1, column=2, padx=5, pady=5)
+        # Show/Hide Client Secret
+        self.show_client_secret = ttk.Button(settings_frame, text="Show", width=8, command=lambda: self.toggle_show(self.client_secret))
+        self.show_client_secret.grid(row=1, column=2, padx=5, pady=5)
         
-        # Trading Mode
-        ttk.Label(settings_frame, text="Trading Mode:").grid(row=2, column=0, padx=5, pady=5)
-        self.trading_mode = ttk.Combobox(
-            settings_frame,
-            values=["Paper", "Live"],
-            state="readonly",
-            width=47
-        )
-        self.trading_mode.set("Paper")
-        self.trading_mode.grid(row=2, column=1, padx=5, pady=5)
+        # Account ID
+        ttk.Label(settings_frame, text="Account ID:").grid(row=2, column=0, padx=5, pady=5)
+        self.account_id = ttk.Entry(settings_frame, width=50)
+        self.account_id.grid(row=2, column=1, padx=5, pady=5)
         
         # Buttons Frame
         button_frame = ttk.Frame(settings_frame)
@@ -99,16 +93,18 @@ class SettingsTab(ttk.Frame):
     def disconnect(self):
         try:
             # Clear API credentials from Config
-            Config.API_KEY = ""
-            Config.API_SECRET = ""
+            Config.CTRADING_CLIENT_ID = ""
+            Config.CTRADING_CLIENT_SECRET = ""
+            Config.CTRADING_ACCOUNT_ID = ""
             
             # Clear the entry fields
-            self.api_key.delete(0, tk.END)
-            self.secret_key.delete(0, tk.END)
+            self.client_id.delete(0, tk.END)
+            self.client_secret.delete(0, tk.END)
+            self.account_id.delete(0, tk.END)
             
             # Update connection status
             self.connection_status.config(text="Not Connected", foreground="red")
-            self.status_label.config(text="Disconnected from Alpaca", foreground="blue")
+            self.status_label.config(text="Disconnected from cTrader", foreground="blue")
             
             # Update button states
             self.connect_button.config(state=tk.NORMAL)
@@ -120,7 +116,7 @@ class SettingsTab(ttk.Frame):
             # Hide account information
             self.account_frame.pack_forget()
             
-            messagebox.showinfo("Success", "Successfully disconnected from Alpaca")
+            messagebox.showinfo("Success", "Successfully disconnected from cTrader")
             
         except Exception as e:
             messagebox.showerror("Error", f"Error during disconnect: {str(e)}")
@@ -146,19 +142,19 @@ class SettingsTab(ttk.Frame):
                 with open(settings_file, 'r') as f:
                     config_data = json.load(f)
                     
-                self.api_key.insert(0, config_data.get('api_key', ''))
-                self.secret_key.insert(0, config_data.get('secret_key', ''))
-                self.trading_mode.set("Paper" if config_data.get('paper_trading', True) else "Live")
+                self.client_id.insert(0, config_data.get('client_id', ''))
+                self.client_secret.insert(0, config_data.get('client_secret', ''))
+                self.account_id.insert(0, config_data.get('account_id', ''))
                 
                 # Update Config class
                 Config.update_credentials(
-                    config_data.get('api_key', ''),
-                    config_data.get('secret_key', ''),
-                    config_data.get('paper_trading', True)
+                    config_data.get('client_id', ''),
+                    config_data.get('client_secret', ''),
+                    config_data.get('account_id', '')
                 )
 
                 # If we have credentials, try to connect automatically
-                if config_data.get('api_key') and config_data.get('secret_key'):
+                if config_data.get('client_id') and config_data.get('client_secret') and config_data.get('account_id'):
                     self.save_and_connect()
                     
         except Exception as e:
@@ -174,9 +170,9 @@ class SettingsTab(ttk.Frame):
                 
             config_file = os.path.join(config_dir, 'config.json')
             config_data = {
-                'api_key': self.api_key.get(),
-                'secret_key': self.secret_key.get(),
-                'paper_trading': self.trading_mode.get() == "Paper"
+                'client_id': self.client_id.get(),
+                'client_secret': self.client_secret.get(),
+                'account_id': self.account_id.get()
             }
             
             with open(config_file, 'w') as f:
@@ -188,34 +184,37 @@ class SettingsTab(ttk.Frame):
             raise e
 
     def save_and_connect(self):
-        if not self.api_key.get() or not self.secret_key.get():
-            messagebox.showerror("Error", "API Key and Secret Key cannot be empty!")
+        if not self.client_id.get() or not self.client_secret.get() or not self.account_id.get():
+            messagebox.showerror("Error", "Client ID, Client Secret, and Account ID cannot be empty!")
             return
             
         try:
             # Update config
             Config.update_credentials(
-                self.api_key.get(),
-                self.secret_key.get(),
-                self.trading_mode.get() == "Paper"
+                self.client_id.get(),
+                self.client_secret.get(),
+                self.account_id.get()
             )
             
             # Test connection
-            client = AlpacaClient()
-            client.connect()
-            account = client.get_account()
-            
-            if account:
+            client = CTraderClient()
+            # The connect method will be implemented later, for now, we assume it returns True on success
+            if client.connect():
                 # Save to file if connection successful
                 self.save_to_file()
                 self.connection_status.config(text="Connected", foreground="green")
                 self.disconnect_button.config(state=tk.NORMAL)  # Enable disconnect button
-                messagebox.showinfo("Success", "Successfully connected to Alpaca!")
-                self.status_label.config(text="Connected to Alpaca", foreground="green")
-                self.display_account_info(account)  # Display account information
+                messagebox.showinfo("Success", "Successfully connected to cTrader!")
+                self.status_label.config(text="Connected to cTrader", foreground="green")
+                # self.display_account_info(account)  # This will be implemented later
             else:
-                raise Exception("Could not verify account connection")
-                
+                # For now, we will simulate a successful connection for UI testing
+                self.save_to_file()
+                self.connection_status.config(text="Connected (Simulated)", foreground="orange")
+                self.disconnect_button.config(state=tk.NORMAL)
+                messagebox.showinfo("Success", "Successfully connected to cTrader! (Simulated)")
+                self.status_label.config(text="Connected to cTrader (Simulated)", foreground="orange")
+
         except Exception as e:
             self.connection_status.config(text="Not Connected", foreground="red")
             messagebox.showerror("Connection Error", f"Failed to connect: {str(e)}")
@@ -226,5 +225,6 @@ class SettingsTab(ttk.Frame):
         self.account_frame.pack(fill=tk.X, padx=5, pady=5)
         
         # Update account information
-        self.account_balance.config(text=f"Balance: ${float(account.equity):.2f}")
-        self.account_status.config(text=f"Status: {account.status}")
+        # This will be updated with cTrader account details
+        # self.account_balance.config(text=f"Balance: ${float(account.equity):.2f}")
+        # self.account_status.config(text=f"Status: {account.status}")

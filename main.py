@@ -13,7 +13,7 @@ from gui.settings import SettingsTab
 from gui.sachiel_ai import SachielAITab
 from gui.performance import PerformanceTab
 from gui.chart_tab import ChartTab
-from trading.alpaca_client import AlpacaClient
+from trading.ctrader_client import CTraderClient
 
 class MainApp(tk.Tk):
     def __init__(self):
@@ -27,26 +27,26 @@ class MainApp(tk.Tk):
         self.title("Sachiel Trading Bot")
         self.geometry("1200x800")
         
-        # Initialize Alpaca Client
+        # Initialize cTrader Client
         try:
-            self.alpaca_client = AlpacaClient()
-            if self.alpaca_client.connect():
-                print("Successfully connected to Alpaca")
+            self.ctrader_client = CTraderClient()
+            if self.ctrader_client.connect():
+                print("Successfully connected to cTrader")
             else:
-                print("Failed to connect to Alpaca")
+                print("Failed to connect to cTrader")
         except Exception as e:
-            print(f"Error initializing Alpaca client: {e}")
+            print(f"Error initializing cTrader client: {e}")
             traceback.print_exc()
-            self.alpaca_client = None
+            self.ctrader_client = None
         
         # Create notebook for tabs
         self.notebook = ttk.Notebook(self)
         self.notebook.pack(expand=True, fill='both', padx=5, pady=5)
         
-        # Create tabs with shared Alpaca client
+        # Create tabs with shared cTrader client
         self.trading_tab = TradingTab(self.notebook)
-        if hasattr(self.trading_tab, 'alpaca_client'):
-            self.trading_tab.alpaca_client = self.alpaca_client
+        if hasattr(self.trading_tab, 'ctrader_client'):
+            self.trading_tab.ctrader_client = self.ctrader_client
             
         self.settings_tab = SettingsTab(self.notebook)
         self.ai_tab = SachielAITab(self.notebook)
@@ -64,9 +64,6 @@ class MainApp(tk.Tk):
         self.style = ttk.Style()
         self.style.configure('TNotebook.Tab', padding=[12, 4])
         
-        # Initialize crypto stream properly
-        self.loop.call_soon_threadsafe(lambda: asyncio.create_task(self._init_crypto_stream()))
-        
         # Set up closing handler
         self.protocol("WM_DELETE_WINDOW", self.on_closing)
         
@@ -78,32 +75,22 @@ class MainApp(tk.Tk):
         asyncio.set_event_loop(self.loop)
         self.loop.run_forever()
 
-    async def _init_crypto_stream(self):
-        """Initialize crypto data stream"""
-        try:
-            if self.alpaca_client:
-                await self.alpaca_client.init_crypto_stream()
-                print("Crypto stream initialized")
-        except Exception as e:
-            print(f"Error initializing crypto stream: {e}")
-            traceback.print_exc()
-
     def check_connection(self):
-        """Periodically check Alpaca connection"""
+        """Periodically check cTrader connection"""
         try:
-            if self.alpaca_client:
-                is_connected = self.alpaca_client.check_connection()
+            if self.ctrader_client:
+                is_connected = self.ctrader_client.check_connection()
                 if not is_connected:
-                    print("Lost connection to Alpaca, attempting to reconnect...")
-                    self.alpaca_client.connect()
+                    print("Lost connection to cTrader, attempting to reconnect...")
+                    self.ctrader_client.connect()
             else:
-                print("No Alpaca client, attempting to initialize...")
-                self.alpaca_client = AlpacaClient()
-                self.alpaca_client.connect()
+                print("No cTrader client, attempting to initialize...")
+                self.ctrader_client = CTraderClient()
+                self.ctrader_client.connect()
                 
                 # Update trading tab's client reference
-                if hasattr(self.trading_tab, 'alpaca_client'):
-                    self.trading_tab.alpaca_client = self.alpaca_client
+                if hasattr(self.trading_tab, 'ctrader_client'):
+                    self.trading_tab.ctrader_client = self.ctrader_client
                     
         except Exception as e:
             print(f"Error in connection check: {e}")
@@ -125,9 +112,9 @@ class MainApp(tk.Tk):
             if hasattr(self, 'thread'):
                 self.thread.join(timeout=1.0)
             
-            # Close Alpaca client
-            if self.alpaca_client:
-                self.alpaca_client.close()
+            # Close cTrader client
+            if self.ctrader_client:
+                self.ctrader_client.close()
             
         except Exception as e:
             print(f"Error during cleanup: {e}")
