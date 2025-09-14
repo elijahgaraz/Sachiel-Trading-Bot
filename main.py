@@ -96,7 +96,7 @@ class MainApp(tk.Tk):
     def _run_event_loop(self):
         """Run the event loop in the background thread"""
         from twisted.internet import asyncioreactor
-        asyncioreactor.install(event_loop=self.loop)
+        asyncioreactor.install(eventloop=self.loop)
         asyncio.set_event_loop(self.loop)
         self.loop.run_forever()
 
