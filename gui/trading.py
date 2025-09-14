@@ -316,8 +316,8 @@ class TradingTab(ttk.Frame):
                 self.symbol_combo.config(values=[])
             
                 if self.ctrader_client is None:
-                messagebox.showerror("Error", "cTrader client not initialized. Please connect from the Settings tab.")
-                return
+                    messagebox.showerror("Error", "cTrader client not initialized. Please connect from the Settings tab.")
+                    return
 
             # Get tradable symbols from the client
             all_symbols = self.ctrader_client.get_tradable_symbols()
