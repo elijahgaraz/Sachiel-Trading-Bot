@@ -9,8 +9,9 @@ from config.settings import Config
 from trading.ctrader_client import CTraderClient
 
 class SettingsTab(ttk.Frame):
-    def __init__(self, parent):
+    def __init__(self, parent, ctrader_client):
         super().__init__(parent)
+        self.ctrader_client = ctrader_client
         self.setup_ui()
         self.load_existing_settings()
         
@@ -152,10 +153,6 @@ class SettingsTab(ttk.Frame):
                     config_data.get('client_secret', ''),
                     config_data.get('account_id', '')
                 )
-
-                # If we have credentials, try to connect automatically
-                if config_data.get('client_id') and config_data.get('client_secret') and config_data.get('account_id'):
-                    self.save_and_connect()
                     
         except Exception as e:
             print(f"Error loading settings: {e}")
@@ -196,24 +193,22 @@ class SettingsTab(ttk.Frame):
                 self.account_id.get()
             )
             
-            # Test connection
-            client = CTraderClient()
-            # The connect method will be implemented later, for now, we assume it returns True on success
-            if client.connect():
-                # Save to file if connection successful
-                self.save_to_file()
-                self.connection_status.config(text="Connected", foreground="green")
-                self.disconnect_button.config(state=tk.NORMAL)  # Enable disconnect button
-                messagebox.showinfo("Success", "Successfully connected to cTrader!")
-                self.status_label.config(text="Connected to cTrader", foreground="green")
-                # self.display_account_info(account)  # This will be implemented later
-            else:
-                # For now, we will simulate a successful connection for UI testing
-                self.save_to_file()
-                self.connection_status.config(text="Connected (Simulated)", foreground="orange")
+            # Save credentials to file
+            self.save_to_file()
+
+            self.status_label.config(text="Connecting to cTrader...", foreground="blue")
+
+            # Use the shared client instance to connect
+            if self.ctrader_client.connect():
+                self.connection_status.config(text="Connecting...", foreground="orange")
                 self.disconnect_button.config(state=tk.NORMAL)
-                messagebox.showinfo("Success", "Successfully connected to cTrader! (Simulated)")
-                self.status_label.config(text="Connected to cTrader (Simulated)", foreground="orange")
+                self.status_label.config(text="Connection process started. Please check your browser to authenticate.", foreground="blue")
+                # The connection status will be updated by the check_connection loop in the main app
+            else:
+                error_msg = self.ctrader_client.get_connection_status()[1]
+                self.connection_status.config(text="Not Connected", foreground="red")
+                messagebox.showerror("Connection Error", f"Failed to initiate connection: {error_msg}")
+                self.status_label.config(text=f"Error: {error_msg}", foreground="red")
 
         except Exception as e:
             self.connection_status.config(text="Not Connected", foreground="red")
