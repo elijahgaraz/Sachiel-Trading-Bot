@@ -2,6 +2,7 @@
 
 import tkinter as tk
 from tkinter import ttk, messagebox
+from ctrader_open_api import Protobuf
 from trading.ctrader_client import CTraderClient
 from trading.market_clock import MarketClock
 from config.settings import Config
@@ -26,7 +27,6 @@ class TradingTab(ttk.Frame):
         self.highest_prices = {}
         self.partial_exits = set()
         self.setup_ui()
-        self.initialize_clients()
         self.start_market_status_updates()
 
     def verify_connection(self):
@@ -39,44 +39,6 @@ class TradingTab(ttk.Frame):
             except Exception as e:
                 print(f"Connection verification failed: {e}")
                 return False
-
-    def start_auto_updates(self):
-        """Start automatic updates for the current symbol and market data"""
-        def update():
-            try:
-                # Update market data if we have a symbol selected and are trading
-                if hasattr(self, 'symbol_var') and self.symbol_var.get() and self.is_trading:
-                    symbol = self.symbol_var.get()
-                    is_crypto = 'BTC' in symbol or 'ETH' in symbol
-                    
-                    # Get latest market data
-                    if self.ctrader_client:
-                        bars = self.ctrader_client.get_bars(symbol, is_crypto)
-                        if bars:
-                            current_price = bars[-1].close
-                            
-                            # Update trading view if needed
-                            try:
-                                position = self.ctrader_client.get_position(symbol.replace('/', ''))
-                                if position:
-                                    # This will be implemented later
-                                    pass
-                            except Exception as e:
-                                # No position exists, this is normal
-                                pass
-                
-            except Exception as e:
-                print(f"Error in auto update: {e}")
-                traceback.print_exc()
-            
-            finally:
-                # Schedule next update if widget still exists
-                if self.winfo_exists():
-                    self.after(30000, update)  # Update every 30 seconds
-        
-        # Start the first update
-        if self.winfo_exists():
-            self.after(1000, update)  # Start first update after 1 second
 
     def setup_ui(self):
         """Setup the complete trading interface"""
@@ -277,8 +239,7 @@ class TradingTab(ttk.Frame):
         y_scrollbar.pack(side=tk.RIGHT, fill=tk.Y)
         x_scrollbar.pack(fill=tk.X)
         
-        # Start auto-updates
-        self.start_auto_updates()
+        # self.start_auto_updates() # This was causing errors
      
     def toggle_simulation_mode(self):
         """Updated simulation mode toggle with crypto support"""
@@ -320,62 +281,6 @@ class TradingTab(ttk.Frame):
                 print(f"Error checking market status: {e}")
                 self.start_button.config(state=tk.DISABLED)
     
-    def initialize_clients(self):
-        """Initialize trading clients with focus on stock trading"""
-        try:
-            print("\nInitializing Trading Clients:")
-            
-            # Check API credentials
-            if not hasattr(Config, 'CTRADING_CLIENT_ID') or not Config.CTRADING_CLIENT_ID or not hasattr(Config, 'CTRADING_CLIENT_SECRET') or not Config.CTRADING_CLIENT_SECRET:
-                print("Error: Missing API credentials")
-                if hasattr(self, 'market_status_label'):
-                    self.market_status_label.config(
-                        text="Please set up API credentials in Settings",
-                        foreground='red'
-                    )
-                return False
-
-            print("1. Creating cTrader client...")
-            self.ctrader_client = CTraderClient()
-            
-            print("2. Connecting cTrader client...")
-            if not self.ctrader_client.connect():
-                print("Failed to connect cTrader client")
-                return False
-                
-            print("3. Verifying trading client...")
-            if not hasattr(self.ctrader_client, 'client'):
-                print("Error: No trading client available after connection")
-                return False
-                
-            print("4. Testing account access...")
-            try:
-                account = self.ctrader_client.get_account()
-                print(f"Account verified - Status: {account.status}")
-                
-                # Update market status label
-                if hasattr(self, 'market_status_label'):
-                    self.market_status_label.config(
-                        text=f"Connected to cTrader - Account Active",
-                        foreground='green'
-                    )
-                return True
-                
-            except Exception as e:
-                print(f"Error verifying account: {e}")
-                traceback.print_exc()
-                return False
-                
-        except Exception as e:
-            print(f"Error in initialize_clients: {str(e)}")
-            traceback.print_exc()
-            if hasattr(self, 'market_status_label'):
-                self.market_status_label.config(
-                    text=f"Error connecting to cTrader: {str(e)}",
-                    foreground='red'
-                )
-            return False
-         
     def load_symbols(self):
         def fetch_symbols():
             try:
@@ -537,10 +442,9 @@ class TradingTab(ttk.Frame):
 
             print(f"Current price for {symbol}: {current_price}")
 
-            # Now, chain the next async call to get positions
             positions_deferred = self.ctrader_client.get_positions()
             if positions_deferred:
-                positions_deferred.addCallback(self._on_positions_received, symbol=symbol, current_price=current_price, bars=bars, is_crypto=is_crypto)
+                positions_deferred.addCallback(self._on_positions_received, symbol=symbol, current_price=current_price, bars=bars)
                 positions_deferred.addErrback(self._on_positions_error)
 
         except Exception as e:
@@ -551,25 +455,20 @@ class TradingTab(ttk.Frame):
         """Callback for handling errors from the get_bars Deferred."""
         print(f"Error fetching bars: {failure.getErrorMessage()}")
 
-    def _on_positions_received(self, positions_response, symbol, current_price, bars, is_crypto):
+    def _on_positions_received(self, positions_response, symbol, current_price, bars):
         """Callback executed when the list of positions is received."""
         try:
-            # Find if a position for the current symbol exists
             position = None
             for p in positions_response.position:
-                if self.ctrader_client.symbols_map.get(p.tradeData.symbolId) == symbol:
+                symbol_id = self.ctrader_client.symbols_map.get(symbol)
+                if p.tradeData.symbolId == symbol_id:
                     position = p
                     break
 
             if position is None:
-                # No position, check entry conditions
                 if self.check_entry_conditions(symbol, current_price, bars):
-                    if is_crypto:
-                        self.enter_live_crypto_trade(symbol, current_price)
-                    else:
-                        self.enter_live_trade(symbol, current_price)
+                    self.enter_live_trade(symbol, current_price)
             else:
-                # Position exists, check exit conditions
                 self.check_live_exit(symbol, position, current_price)
 
         except Exception as e:
@@ -722,7 +621,7 @@ class TradingTab(ttk.Frame):
         except Exception as e:
             print(f"Error monitoring trades: {e}")
             traceback.print_exc()
-    
+
     def execute_simulation_trade(self):
         """Execute a simulated trade"""
         try:
