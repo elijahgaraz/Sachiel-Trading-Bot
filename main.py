@@ -59,14 +59,22 @@ class MainApp(tk.Tk):
         self.protocol("WM_DELETE_WINDOW", self.on_closing)
         
     def update_connection_status_ui(self, status: str, color: str):
-        """Callback to update the UI with connection status."""
-        if hasattr(self, 'settings_tab') and self.settings_tab.winfo_exists():
-            self.settings_tab.connection_status.config(text=status, foreground=color)
-            self.settings_tab.status_label.config(text=f"Status: {status}", foreground=color)
-            if status == "Connected":
-                self.settings_tab.disconnect_button.config(state=tk.NORMAL)
-            else:
-                self.settings_tab.disconnect_button.config(state=tk.DISABLED)
+        """
+        Callback to update the UI with connection status.
+        This method is called from the network thread, so it schedules the UI update
+        to run on the main thread using `after`.
+        """
+        def do_update():
+            if hasattr(self, 'settings_tab') and self.settings_tab.winfo_exists():
+                self.settings_tab.connection_status.config(text=status, foreground=color)
+                self.settings_tab.status_label.config(text=f"Status: {status}", foreground=color)
+                if status == "Connected":
+                    self.settings_tab.disconnect_button.config(state=tk.NORMAL)
+                else:
+                    self.settings_tab.disconnect_button.config(state=tk.DISABLED)
+
+        # Schedule the UI update to be run by the main Tkinter thread
+        self.after(0, do_update)
 
 
     def _run_event_loop(self):
