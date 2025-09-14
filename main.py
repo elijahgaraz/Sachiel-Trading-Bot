@@ -27,17 +27,8 @@ class MainApp(tk.Tk):
         self.title("Sachiel Trading Bot")
         self.geometry("1200x800")
         
-        # Initialize cTrader Client
-        try:
-            self.ctrader_client = CTraderClient()
-            if self.ctrader_client.connect():
-                print("Successfully connected to cTrader")
-            else:
-                print("Failed to connect to cTrader")
-        except Exception as e:
-            print(f"Error initializing cTrader client: {e}")
-            traceback.print_exc()
-            self.ctrader_client = None
+        # Initialize cTrader Client but do not connect
+        self.ctrader_client = CTraderClient()
         
         # Create notebook for tabs
         self.notebook = ttk.Notebook(self)
@@ -48,7 +39,7 @@ class MainApp(tk.Tk):
         if hasattr(self.trading_tab, 'ctrader_client'):
             self.trading_tab.ctrader_client = self.ctrader_client
             
-        self.settings_tab = SettingsTab(self.notebook)
+        self.settings_tab = SettingsTab(self.notebook, self.ctrader_client)
         self.ai_tab = SachielAITab(self.notebook)
         self.performance_tab = PerformanceTab(self.notebook)
         self.chart_tab = ChartTab(self.notebook)
@@ -76,28 +67,14 @@ class MainApp(tk.Tk):
         self.loop.run_forever()
 
     def check_connection(self):
-        """Periodically check cTrader connection"""
-        try:
-            if self.ctrader_client:
-                is_connected = self.ctrader_client.check_connection()
-                if not is_connected:
-                    print("Lost connection to cTrader, attempting to reconnect...")
-                    self.ctrader_client.connect()
-            else:
-                print("No cTrader client, attempting to initialize...")
-                self.ctrader_client = CTraderClient()
-                self.ctrader_client.connect()
-                
-                # Update trading tab's client reference
-                if hasattr(self.trading_tab, 'ctrader_client'):
-                    self.trading_tab.ctrader_client = self.ctrader_client
-                    
-        except Exception as e:
-            print(f"Error in connection check: {e}")
-            
-        finally:
-            # Schedule next check in 30 seconds
-            self.after(30000, self.check_connection)
+        """Periodically check cTrader connection status."""
+        if self.ctrader_client:
+            is_connected, status_message = self.ctrader_client.get_connection_status()
+            # This is just a passive check. The Settings tab will show the status.
+            # We are no longer automatically reconnecting here.
+
+        # Schedule next check in 30 seconds
+        self.after(30000, self.check_connection)
 
     def on_closing(self):
         """Clean up resources before closing"""
