@@ -14,7 +14,7 @@ from typing import List, Any, Optional, Tuple, Dict, Callable
 
 # Add project root to sys.path to allow imports from other directories
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-from config.settings import Settings
+from config.settings import Config
 
 # Conditional import for Twisted reactor for GUI integration
 _reactor_installed = False
@@ -96,8 +96,7 @@ class OAuthCallbackHandler(BaseHTTPRequestHandler):
              super().log_message(format, *args)
 
 class CTraderClient:
-    def __init__(self, settings: Settings, on_account_update: Optional[Callable[[Dict[str, Any]], None]] = None, on_status_update: Optional[Callable[[str, str], None]] = None):
-        self.settings = settings
+    def __init__(self, on_account_update: Optional[Callable[[Dict[str, Any]], None]] = None, on_status_update: Optional[Callable[[str, str], None]] = None):
         self.on_account_update = on_account_update
         self.on_status_update = on_status_update
         self.is_connected: bool = False
@@ -111,7 +110,7 @@ class CTraderClient:
         self._token_expires_at: Optional[float] = None
         self._load_tokens_from_file()
 
-        self.ctid_trader_account_id: Optional[int] = self.settings.openapi.default_ctid_trader_account_id
+        self.ctid_trader_account_id: Optional[int] = int(Config.CTRADING_ACCOUNT_ID) if Config.CTRADING_ACCOUNT_ID else None
         self.account_id: Optional[str] = None
         self.balance: Optional[float] = None
         self.equity: Optional[float] = None
@@ -132,7 +131,7 @@ class CTraderClient:
         if USE_OPENAPI_LIB:
             host = (
                 EndPoints.PROTOBUF_LIVE_HOST
-                if self.settings.openapi.host_type == "live"
+                if Config.CTRADER_HOST_TYPE == "live"
                 else EndPoints.PROTOBUF_DEMO_HOST
             )
             port = EndPoints.PROTOBUF_PORT
@@ -191,8 +190,8 @@ class CTraderClient:
         self._is_client_connected = True
         self._last_error = ""
         req = ProtoOAApplicationAuthReq()
-        req.clientId = self.settings.openapi.client_id
-        req.clientSecret = self.settings.openapi.client_secret
+        req.clientId = Config.CTRADING_CLIENT_ID
+        req.clientSecret = Config.CTRADING_CLIENT_SECRET
         if not req.clientId or not req.clientSecret:
             print("Missing OpenAPI credentials.")
             client.stopService()
@@ -398,9 +397,9 @@ class CTraderClient:
                 print("Failed to refresh token. Proceeding to full OAuth flow.")
 
         print("Initiating full OAuth2 flow...")
-        auth_url = self.settings.openapi.spotware_auth_url
-        client_id = self.settings.openapi.client_id
-        redirect_uri = self.settings.openapi.redirect_uri
+        auth_url = Config.CTRADER_SPOTWARE_AUTH_URL
+        client_id = Config.CTRADING_CLIENT_ID
+        redirect_uri = Config.CTRADER_REDIRECT_URI
         scopes = "trading"
         params = {
             "response_type": "code",
@@ -439,7 +438,7 @@ class CTraderClient:
             if self._http_server_thread and self._http_server_thread.is_alive():
                 self._stop_local_http_server()
 
-            parsed_uri = urllib.parse.urlparse(self.settings.openapi.redirect_uri)
+            parsed_uri = urllib.parse.urlparse(Config.CTRADER_REDIRECT_URI)
             host = parsed_uri.hostname
             port = parsed_uri.port
 
@@ -471,11 +470,11 @@ class CTraderClient:
             payload = {
                 "grant_type": "authorization_code",
                 "code": auth_code,
-                "redirect_uri": self.settings.openapi.redirect_uri,
-                "client_id": self.settings.openapi.client_id,
-                "client_secret": self.settings.openapi.client_secret,
+                "redirect_uri": Config.CTRADER_REDIRECT_URI,
+                "client_id": Config.CTRADING_CLIENT_ID,
+                "client_secret": Config.CTRADING_CLIENT_SECRET,
             }
-            response = requests.post(self.settings.openapi.spotware_token_url, data=payload)
+            response = requests.post(Config.CTRADER_SPOTWARE_TOKEN_URL, data=payload)
             response.raise_for_status()
             token_data = response.json()
 
@@ -535,10 +534,10 @@ class CTraderClient:
             payload = {
                 "grant_type": "refresh_token",
                 "refresh_token": self._refresh_token,
-                "client_id": self.settings.openapi.client_id,
-                "client_secret": self.settings.openapi.client_secret,
+                "client_id": Config.CTRADING_CLIENT_ID,
+                "client_secret": Config.CTRADING_CLIENT_SECRET,
             }
-            response = requests.post(self.settings.openapi.spotware_token_url, data=payload)
+            response = requests.post(Config.CTRADER_SPOTWARE_TOKEN_URL, data=payload)
             response.raise_for_status()
             token_data = response.json()
 
@@ -561,6 +560,15 @@ class CTraderClient:
         if not self._access_token or not self._token_expires_at:
             return True
         return time.time() > (self._token_expires_at - buffer_seconds)
+
+    def set_account_id(self, account_id: str):
+        """Sets the ctidTraderAccountId for the client."""
+        try:
+            self.ctid_trader_account_id = int(account_id)
+            print(f"CTraderClient: Account ID set to {self.ctid_trader_account_id}")
+        except (ValueError, TypeError):
+            self.ctid_trader_account_id = None
+            print("CTraderClient: Invalid Account ID provided. Set to None.")
 
     def disconnect(self) -> None:
         if self.client:
