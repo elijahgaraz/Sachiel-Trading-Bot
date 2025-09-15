@@ -6,15 +6,16 @@ import os
 import sys
 import threading
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-from config.settings import Config
+from config.settings import Settings
 from trading.ctrader_client import CTraderClient
 
 class SettingsTab(ttk.Frame):
-    def __init__(self, parent, ctrader_client):
+    def __init__(self, parent, settings: Settings, ctrader_client: CTraderClient):
         super().__init__(parent)
+        self.settings = settings
         self.ctrader_client = ctrader_client
         self.setup_ui()
-        self.load_existing_settings()
+        self.load_settings_into_ui()
         
     def setup_ui(self):
         settings_frame = ttk.LabelFrame(self, text="cTrader API Settings")
@@ -91,92 +92,30 @@ class SettingsTab(ttk.Frame):
 
     def disconnect(self):
         try:
-            # Clear API credentials from Config
-            Config.CTRADING_CLIENT_ID = ""
-            Config.CTRADING_CLIENT_SECRET = ""
-            Config.CTRADING_ACCOUNT_ID = ""
-            
-            # Clear the entry fields
+            self.ctrader_client.disconnect()
             self.client_id.delete(0, tk.END)
             self.client_secret.delete(0, tk.END)
             self.account_id.delete(0, tk.END)
-            
-            # Update connection status
-            self.connection_status.config(text="Not Connected", foreground="red")
-            self.status_label.config(text="Disconnected from cTrader", foreground="blue")
-            
-            # Update button states
+            self.status_label.config(text="Disconnected.", foreground="blue")
             self.connect_button.config(state=tk.NORMAL)
             self.disconnect_button.config(state=tk.DISABLED)
-            
-            # Delete saved credentials
-            self.delete_saved_credentials()
-            
-            # Hide account information
             self.account_frame.pack_forget()
-            
-            messagebox.showinfo("Success", "Successfully disconnected from cTrader")
-            
+            messagebox.showinfo("Success", "Successfully disconnected from cTrader.")
         except Exception as e:
-            messagebox.showerror("Error", f"Error during disconnect: {str(e)}")
+            messagebox.showerror("Error", f"Error during disconnect: {e}")
 
-    def delete_saved_credentials(self):
-        try:
-            config_dir = os.path.expanduser('~/.sachiel_trading')
-            config_file = os.path.join(config_dir, 'config.json')
-            
-            if os.path.exists(config_file):
-                os.remove(config_file)
-                
-        except Exception as e:
-            print(f"Error deleting credentials: {e}")
+    def load_settings_into_ui(self):
+        """Populate UI fields from the loaded settings object."""
+        self.client_id.delete(0, tk.END)
+        self.client_secret.delete(0, tk.END)
+        self.account_id.delete(0, tk.END)
 
-    def load_existing_settings(self):
-        """Load previously saved settings if they exist"""
-        try:
-            config_dir = os.path.expanduser('~/.sachiel_trading')
-            settings_file = os.path.join(config_dir, 'config.json')
-            
-            if os.path.exists(settings_file):
-                with open(settings_file, 'r') as f:
-                    config_data = json.load(f)
-                    
-                self.client_id.insert(0, config_data.get('client_id', ''))
-                self.client_secret.insert(0, config_data.get('client_secret', ''))
-                self.account_id.insert(0, config_data.get('account_id', ''))
-                
-                # Update Config class
-                Config.update_credentials(
-                    config_data.get('client_id', ''),
-                    config_data.get('client_secret', ''),
-                    config_data.get('account_id', '')
-                )
-                    
-        except Exception as e:
-            print(f"Error loading settings: {e}")
-            self.status_label.config(text=f"Error loading settings: {str(e)}", foreground="red")
-
-    def save_to_file(self):
-        """Save API credentials to file"""
-        try:
-            config_dir = os.path.expanduser('~/.sachiel_trading')
-            if not os.path.exists(config_dir):
-                os.makedirs(config_dir)
-                
-            config_file = os.path.join(config_dir, 'config.json')
-            config_data = {
-                'client_id': self.client_id.get(),
-                'client_secret': self.client_secret.get(),
-                'account_id': self.account_id.get()
-            }
-            
-            with open(config_file, 'w') as f:
-                json.dump(config_data, f)
-                
-        except Exception as e:
-            print(f"Error saving settings: {e}")
-            self.status_label.config(text=f"Error saving settings: {str(e)}", foreground="red")
-            raise e
+        if self.settings.openapi.client_id:
+            self.client_id.insert(0, self.settings.openapi.client_id)
+        if self.settings.openapi.client_secret:
+            self.client_secret.insert(0, self.settings.openapi.client_secret)
+        if self.settings.openapi.default_ctid_trader_account_id:
+            self.account_id.insert(0, str(self.settings.openapi.default_ctid_trader_account_id))
 
     def save_and_connect(self):
         if not self.client_id.get() or not self.client_secret.get() or not self.account_id.get():
@@ -184,12 +123,17 @@ class SettingsTab(ttk.Frame):
             return
             
         try:
-            Config.update_credentials(
-                self.client_id.get(),
-                self.client_secret.get(),
-                self.account_id.get()
-            )
-            self.save_to_file()
+            # Update the settings object from the UI
+            self.settings.openapi.client_id = self.client_id.get()
+            self.settings.openapi.client_secret = self.client_secret.get()
+            try:
+                self.settings.openapi.default_ctid_trader_account_id = int(self.account_id.get())
+            except (ValueError, TypeError):
+                messagebox.showerror("Error", "Account ID must be a valid integer.")
+                return
+
+            # Save the updated settings to config.json
+            self.settings.save()
 
             self.status_label.config(text="Connecting to cTrader... Please check your browser to authenticate.", foreground="blue")
             self.connect_button.config(state=tk.DISABLED)
