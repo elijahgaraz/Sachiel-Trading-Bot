@@ -35,10 +35,8 @@ class TradingTab(ttk.Frame):
 
     def verify_connection(self):
         """Verify connection to cTrader is still active"""
-        # This method is called in the trading loop, so it should not raise NotImplementedError
-        # for now, it will just use the check_connection method from the client
         if self.ctrader_client:
-            return self.ctrader_client.check_connection()
+            return self.ctrader_client.get_connection_status()[0]
         return False
 
     def setup_ui(self):
@@ -345,11 +343,11 @@ class TradingTab(ttk.Frame):
     def set_ctrader_client(self, client):
         """Sets the cTrader client and loads initial data if connected."""
         self.ctrader_client = client
-        if self.ctrader_client and self.ctrader_client.check_connection():
+        if self.ctrader_client and self.ctrader_client.get_connection_status()[0]:
             self.load_symbols()
 
     def load_symbols_if_connected(self):
-        if self.ctrader_client and self.ctrader_client.check_connection():
+        if self.ctrader_client and self.ctrader_client.get_connection_status()[0]:
             self.load_symbols()
 
     def start_market_status_updates(self):
@@ -521,7 +519,7 @@ class TradingTab(ttk.Frame):
                 return
                 
             # Initialize clients if not already done
-            if self.ctrader_client is None or not self.ctrader_client.check_connection():
+            if self.ctrader_client is None or not self.ctrader_client.get_connection_status()[0]:
                 messagebox.showerror("Error", "Not connected to cTrader. Please connect from the Settings tab first.")
                 return
             
@@ -625,7 +623,7 @@ class TradingTab(ttk.Frame):
             # Add periodic connection check
             if not self.simulation_mode:
                 try:
-                    if not self.ctrader_client.check_connection():
+                    if not self.ctrader_client.get_connection_status()[0]:
                         print("Lost connection to cTrader, stopping trading loop.")
                         self.result_queue.put(("log", ("STOP", symbol, "-", "-", "-", "-", "Connection Lost", "-")))
                         self.stop_trading()
