@@ -50,15 +50,11 @@ from gui.sachiel_ai import SachielAITab
 from gui.performance import PerformanceTab
 from gui.chart_tab import ChartTab
 from trading.ctrader_client import CTraderClient
-from config.settings import Settings
 
 
 class MainApp(tk.Tk):
     def __init__(self):
         super().__init__()
-
-        # Load settings
-        self.settings = Settings.load()
 
         # Reuse the already-created global asyncio loop
         self.loop = LOOP
@@ -73,7 +69,6 @@ class MainApp(tk.Tk):
 
         # --- cTrader client (not connected yet) ---
         self.ctrader_client = CTraderClient(
-            settings=self.settings,
             on_account_update=self.update_account_info_ui,
             on_status_update=self.update_connection_status_ui,
         )
@@ -84,10 +79,11 @@ class MainApp(tk.Tk):
 
         # Create tabs
         self.trading_tab = TradingTab(self.notebook)
-        # Set the cTrader client for the trading tab
-        self.trading_tab.set_ctrader_client(self.ctrader_client)
+        # If TradingTab expects a client, attach it
+        if hasattr(self.trading_tab, "ctrader_client"):
+            self.trading_tab.ctrader_client = self.ctrader_client
 
-        self.settings_tab = SettingsTab(self.notebook, self.settings, self.ctrader_client)
+        self.settings_tab = SettingsTab(self.notebook, self.ctrader_client)
         self.ai_tab = SachielAITab(self.notebook)
         self.performance_tab = PerformanceTab(self.notebook)
         self.chart_tab = ChartTab(self.notebook)
@@ -131,7 +127,6 @@ class MainApp(tk.Tk):
                 self.settings_tab.status_label.config(text=f"Status: {status}", foreground=color)
                 if status == "Connected":
                     self.settings_tab.disconnect_button.config(state=tk.NORMAL)
-                    self.trading_tab.load_symbols_if_connected()
                 else:
                     self.settings_tab.disconnect_button.config(state=tk.DISABLED)
 
@@ -196,8 +191,6 @@ class MainApp(tk.Tk):
 # --- Entrypoint ---------------------------------------------------------------------------------
 def main():
     try:
-        # Note: In the reference app, settings were loaded here.
-        # I've moved it into MainApp's __init__ to keep it encapsulated.
         app = MainApp()
         app.run()
     except Exception as e:
