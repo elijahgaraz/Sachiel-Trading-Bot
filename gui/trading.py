@@ -303,16 +303,6 @@ class TradingTab(ttk.Frame):
                 if self.ctrader_client is None:
                     self.initialize_clients()
 
-            # Get both stocks and crypto symbols
-                # This will be implemented later
-                all_symbols = ["EURUSD", "USDJPY", "BTCUSD"]
-
-                self.symbol_combo.config(values=all_symbols)
-                self.loading_label.config(text=f"{len(all_symbols)} symbols loaded")
-                self.refresh_button.config(state=tk.NORMAL)
-
-                if all_symbols:
-                    self.symbol_combo.set(all_symbols[0])
                 
             except Exception as e:
                 self.loading_label.config(text="Error loading symbols")
@@ -540,16 +530,16 @@ class TradingTab(ttk.Frame):
                 except Exception as e:
                     print(f"Error in connection check: {e}")
 
-        def verify_connection(self):
-            """Verify connection to cTrader is still active"""
-            try:
-                if self.ctrader_client and self.ctrader_client.client:
-                    # This will be implemented later
-                    return True
-                return False
-            except Exception as e:
-                print(f"Connection verification failed: {e}")
-                return False
+    def verify_connection(self):
+        """Verify connection to cTrader is still active"""
+        try:
+            if self.ctrader_client and self.ctrader_client.client:
+                # This will be implemented later
+                return True
+            return False
+        except Exception as e:
+            print(f"Connection verification failed: {e}")
+            return False
             
     def monitor_trade_execution(self):
         """Monitor pending trades and update status"""
