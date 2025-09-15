@@ -4,6 +4,7 @@ from tkinter import ttk, messagebox
 import json
 import os
 import sys
+import threading
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 from config.settings import Config
 from trading.ctrader_client import CTraderClient
@@ -183,34 +184,32 @@ class SettingsTab(ttk.Frame):
             return
             
         try:
-            # Update config
             Config.update_credentials(
                 self.client_id.get(),
                 self.client_secret.get(),
                 self.account_id.get()
             )
-            
-            # Save credentials to file
             self.save_to_file()
 
-            self.status_label.config(text="Connecting to cTrader...", foreground="blue")
+            self.status_label.config(text="Connecting to cTrader... Please check your browser to authenticate.", foreground="blue")
+            self.connect_button.config(state=tk.DISABLED)
 
-            # Use the shared client instance to connect
-            if self.ctrader_client.connect():
-                self.connection_status.config(text="Connecting...", foreground="orange")
-                self.disconnect_button.config(state=tk.NORMAL)
-                self.status_label.config(text="Connection process started. Please check your browser to authenticate.", foreground="blue")
-                # The connection status will be updated by the check_connection loop in the main app
-            else:
-                error_msg = self.ctrader_client.get_connection_status()[1]
-                self.connection_status.config(text="Not Connected", foreground="red")
-                messagebox.showerror("Connection Error", f"Failed to initiate connection: {error_msg}")
-                self.status_label.config(text=f"Error: {error_msg}", foreground="red")
+            def connect_thread_target():
+                if not self.ctrader_client.connect():
+                    error_msg = self.ctrader_client.get_connection_status()[1]
+                    self.after(0, self.handle_connection_error, error_msg)
+
+            thread = threading.Thread(target=connect_thread_target, daemon=True)
+            thread.start()
 
         except Exception as e:
-            self.connection_status.config(text="Not Connected", foreground="red")
-            messagebox.showerror("Connection Error", f"Failed to connect: {str(e)}")
-            self.status_label.config(text=f"Error: {str(e)}", foreground="red")
+            self.handle_connection_error(f"Failed to start connection thread: {e}")
+
+    def handle_connection_error(self, error_msg):
+        self.connection_status.config(text="Not Connected", foreground="red")
+        messagebox.showerror("Connection Error", f"Failed to connect: {error_msg}")
+        self.status_label.config(text=f"Error: {error_msg}", foreground="red")
+        self.connect_button.config(state=tk.NORMAL)
 
     def display_account_info(self, account):
         # Show the account frame
