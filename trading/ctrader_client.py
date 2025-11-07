@@ -11,6 +11,7 @@ import queue
 import urllib.parse
 from http.server import BaseHTTPRequestHandler, HTTPServer
 from typing import List, Any, Optional, Tuple, Dict, Callable
+from functools import wraps
 
 # Add project root to sys.path to allow imports from other directories
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
@@ -20,6 +21,7 @@ from config.settings import Config
 _reactor_installed = False
 try:
     from twisted.internet import reactor
+    from twisted.internet.defer import Deferred
     _reactor_installed = True
 except ImportError:
     print("Twisted reactor not found. GUI integration with Twisted might require manual setup.")
@@ -42,7 +44,8 @@ try:
         ProtoOASymbolsListReq, ProtoOASymbolsListRes,
         ProtoOASymbolByIdReq, ProtoOASymbolByIdRes,
         ProtoOAGetTrendbarsReq,
-        ProtoOAGetTrendbarsRes
+        ProtoOAGetTrendbarsRes,
+        ProtoOAGetPositionListReq
     )
     from ctrader_open_api.messages.OpenApiModelMessages_pb2 import (
         ProtoOATrader, ProtoOASymbol,
@@ -95,10 +98,25 @@ class OAuthCallbackHandler(BaseHTTPRequestHandler):
         if "400" in args[0] or "404" in args[0] or "code 200" in args[0]:
              super().log_message(format, *args)
 
+def require_valid_token(func: Callable) -> Callable:
+    """Decorator to ensure a valid token before making a request."""
+    @wraps(func)
+    def wrapper(self: 'CTraderClient', *args, **kwargs):
+        if not self._ensure_valid_token():
+            return None
+        return func(self, *args, **kwargs)
+    return wrapper
+
 class CTraderClient:
+    """
+    Client for interacting with the cTrader Open API.
+
+    Handles OAuth 2.0 authentication, connection management, and trading operations.
+    """
     def __init__(self, on_account_update: Optional[Callable[[Dict[str, Any]], None]] = None, on_status_update: Optional[Callable[[str, str], None]] = None):
         self.on_account_update = on_account_update
         self.on_status_update = on_status_update
+        self._lock = threading.Lock()
         self.is_connected: bool = False
         self._is_client_connected: bool = False
         self._last_error: str = ""
@@ -181,9 +199,10 @@ class CTraderClient:
                 print(f"Error removing corrupted token file: {rm_err}")
 
     def _next_message_id(self) -> str:
-        mid = str(self._message_id_counter)
-        self._message_id_counter += 1
-        return mid
+        with self._lock:
+            mid = str(self._message_id_counter)
+            self._message_id_counter += 1
+            return mid
 
     def _on_client_connected(self, client: Client) -> None:
         print("OpenAPI Client Connected.")
@@ -211,8 +230,8 @@ class CTraderClient:
     def _on_message_received(self, client: Client, message: Any) -> None:
         try:
             actual_message = Protobuf.extract(message)
-        except Exception as e:
-            print(f"Error using Protobuf.extract: {e}. Falling back to manual deserialization if possible.")
+        except (google.protobuf.message.DecodeError, KeyError) as e:
+            print(f"Error extracting Protobuf message: {e}. Falling back to manual deserialization.")
             actual_message = message
 
         # Check if the message corresponds to a pending deferred
@@ -381,6 +400,14 @@ class CTraderClient:
         self._last_error = failure.getErrorMessage()
 
     def connect(self) -> bool:
+        """
+        Initiates the connection to the cTrader API.
+
+        Handles the OAuth 2.0 flow if necessary.
+
+        Returns:
+            bool: True if the connection process was initiated successfully, False otherwise.
+        """
         if not USE_OPENAPI_LIB:
             self._last_error = "OpenAPI library not available (mock mode)."
             return False
@@ -452,7 +479,7 @@ class CTraderClient:
             self._http_server_thread = threading.Thread(target=self._http_server.serve_forever, daemon=True)
             self._http_server_thread.start()
             return True
-        except Exception as e:
+        except (OSError, ValueError) as e:
             self._last_error = f"Failed to start local HTTP server: {e}"
             return False
 
@@ -496,6 +523,9 @@ class CTraderClient:
             return False
 
     def _start_openapi_client_service(self):
+        """
+        Starts the OpenAPI client service.
+        """
         if self.is_connected or (self.client and getattr(self.client, 'isConnected', False)):
             return True
 
@@ -513,7 +543,7 @@ class CTraderClient:
                 if asyncio_loop is not None:
                     try:
                         loop_running = asyncio_loop.is_running()
-                    except Exception:
+                    except RuntimeError:
                         loop_running = False
 
                 if not reactor.running and not loop_running:
@@ -523,7 +553,7 @@ class CTraderClient:
                     )
                     self._reactor_thread.start()
             return True
-        except Exception as e:
+        except (RuntimeError, IOError) as e:
             self._last_error = f"OpenAPI client error: {e}"
             return False
 
@@ -557,6 +587,9 @@ class CTraderClient:
             return False
 
     def _is_token_expired(self, buffer_seconds: int = 60) -> bool:
+        """
+        Checks if the access token is expired or close to expiring.
+        """
         if not self._access_token or not self._token_expires_at:
             return True
         return time.time() > (self._token_expires_at - buffer_seconds)
@@ -571,6 +604,9 @@ class CTraderClient:
             print("CTraderClient: Invalid Account ID provided. Set to None.")
 
     def disconnect(self) -> None:
+        """
+        Disconnects from the cTrader API.
+        """
         if self.client:
             self.client.stopService()
         if _reactor_installed and reactor.running:
@@ -579,9 +615,21 @@ class CTraderClient:
         self._is_client_connected = False
 
     def get_connection_status(self) -> Tuple[bool, str]:
+        """
+        Gets the current connection status.
+
+        Returns:
+            A tuple containing a boolean indicating if the client is connected and a string with the last error message.
+        """
         return self.is_connected, self._last_error
 
     def get_account_summary(self) -> Dict[str, Any]:
+        """
+        Gets a summary of the current account.
+
+        Returns:
+            A dictionary containing the account ID, balance, equity, and margin.
+        """
         return {
             "account_id": self.account_id,
             "balance": self.balance,
@@ -589,38 +637,33 @@ class CTraderClient:
             "margin": self.used_margin
         }
 
+    @require_valid_token
     def _send_account_auth_request(self, ctid: int) -> None:
-        if not self._ensure_valid_token():
-            return
         req = ProtoOAAccountAuthReq()
         req.ctidTraderAccountId = ctid
         req.accessToken = self._access_token or ""
         self.client.send(req)
 
+    @require_valid_token
     def _send_get_account_list_request(self) -> None:
-        if not self._ensure_valid_token():
-            return
         req = ProtoOAGetAccountListByAccessTokenReq()
         req.accessToken = self._access_token
         self.client.send(req)
 
+    @require_valid_token
     def _send_get_trader_request(self, ctid: int) -> None:
-        if not self._ensure_valid_token():
-            return
         req = ProtoOATraderReq()
         req.ctidTraderAccountId = ctid
         self.client.send(req)
 
+    @require_valid_token
     def _send_get_symbols_list_request(self) -> None:
-        if not self._ensure_valid_token():
-            return
         req = ProtoOASymbolsListReq()
         req.ctidTraderAccountId = self.ctid_trader_account_id
         self.client.send(req)
 
+    @require_valid_token
     def _send_subscribe_spots_request(self, ctid_trader_account_id: int, symbol_ids: List[int]) -> None:
-        if not self._ensure_valid_token():
-            return
         req = ProtoOASubscribeSpotsReq()
         req.ctidTraderAccountId = ctid_trader_account_id
         req.symbolId.extend(symbol_ids)
@@ -650,12 +693,26 @@ class CTraderClient:
         self.client.send(request)
         return d
 
+    @require_valid_token
     def get_positions(self):
+        """
+        Gets the current positions for the account.
+
+        Returns:
+            A Deferred that will fire with the positions list.
+        """
         request = ProtoOAGetPositionListReq()
         request.ctidTraderAccountId = self.ctid_trader_account_id
         return self._send_request(request)
 
+    @require_valid_token
     def submit_order(self, order_data):
+        """
+        Submits a new order.
+
+        Args:
+            order_data: A dictionary containing the order details (symbol, side, qty).
+        """
         if not self.is_connected:
             print("Not connected to cTrader")
             return
@@ -691,12 +748,28 @@ class CTraderClient:
         return self._send_request(request)
 
     def get_tradable_symbols(self):
+        """
+        Gets a list of tradable symbols.
+
+        Returns:
+            A list of symbol names.
+        """
         if not self.is_connected:
             print("Not connected to cTrader")
             return None
         return list(self.symbols_map.keys())
 
     def get_bars(self, symbol, is_crypto=False):
+        """
+        Gets historical bar data for a symbol.
+
+        Args:
+            symbol: The symbol to get the bars for.
+            is_crypto: Whether the symbol is a cryptocurrency.
+
+        Returns:
+            A Deferred that will fire with the bar data.
+        """
         if not self.is_connected:
             print("Not connected to cTrader")
             return None
@@ -720,9 +793,18 @@ class CTraderClient:
         return self._send_request(request)
 
     def check_connection(self):
+        """
+        Checks if the client is connected to the cTrader API.
+
+        Returns:
+            True if the client is connected, False otherwise.
+        """
         return self.is_connected
 
     def close(self):
+        """
+        Closes the connection to the cTrader API.
+        """
         self.disconnect()
 
 if __name__ == '__main__':
